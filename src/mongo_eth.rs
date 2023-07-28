@@ -21,7 +21,7 @@ use tokio_retry::{
 };
 
 use crate::{helpers, ClapActionType};
-use log::{info, warn};
+use log::{info, warn, error};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 extern crate pretty_env_logger;
 
@@ -336,8 +336,8 @@ pub async fn main(
     let provider = Provider::<Ws>::connect(eth_uri).await?;
 
     match action_type {
-        ClapActionType::Init {} => {
-            init(mongo_client, provider).await?;
+        ClapActionType::Init {from, init_trace } => {
+            init(mongo_client, provider, *from, *init_trace).await?;
         }
         ClapActionType::Sync {} => todo!(),
         ClapActionType::GraphQL {} => todo!(),
@@ -346,7 +346,7 @@ pub async fn main(
     Ok(())
 }
 
-async fn init(client: Client, provider: Provider<Ws>) -> Result<(), Box<dyn Error>> {
+async fn init(client: Client, provider: Provider<Ws>, from: u64, init_trace: bool) -> Result<(), Box<dyn Error>> {
     // let mut session = client.start_session(None).await.unwrap();
     // session.start_transaction(None).await?;
 
@@ -355,7 +355,6 @@ async fn init(client: Client, provider: Provider<Ws>) -> Result<(), Box<dyn Erro
     // TODO: try get latest from mongo
     let num = 0_u64;
 
-    let from = 0;
     let latest: u64 = provider.get_block_number().await?.as_u64();
     let to = latest / 1_000 * 1_000;
 
@@ -376,11 +375,16 @@ async fn init(client: Client, provider: Provider<Ws>) -> Result<(), Box<dyn Erro
         ),
         ProviderError,
     > {
-        tokio::try_join!(
+        let result = tokio::try_join!(
             provider.get_block_with_txs(num),
             provider.get_block_receipts(num),
             provider.trace_block(num.into())
-        )
+        );
+        if result.is_err() {
+            error!("{:?}", result);
+        }
+        
+        result
     }
 
     for num in from..=to {
@@ -458,7 +462,7 @@ async fn init(client: Client, provider: Provider<Ws>) -> Result<(), Box<dyn Erro
         let trace_fu = async move { if traces.len() > 0 {
             Some(trace_coll.insert_many(traces, None).await) 
         } else {
-             None
+            None
         }};
 
         let block_fu = block_coll.insert_one(

@@ -29,7 +29,15 @@ pub struct Args {
 
 #[derive(clap::Subcommand, PartialEq, Eq, Debug)]
 pub enum ClapActionType {
-    Init {},
+    Init {
+        /// from block
+        #[arg(long, default_value_t = 0)]
+        from: u64,
+
+        /// init trace (not block or tx)
+        #[arg(long="trace", default_value_t = false)]
+        init_trace: bool
+    },
     Sync {},
     GraphQL {},
 }
