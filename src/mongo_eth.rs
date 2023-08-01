@@ -336,10 +336,10 @@ pub async fn main(
     let provider = Provider::<Ws>::connect(eth_uri).await?;
 
     match action_type {
-        ClapActionType::Init {from, init_trace } => {
+        ClapActionType::Init {from, init_trace, batch } => {
             init(mongo_client, provider, *from, *init_trace).await?;
         }
-        ClapActionType::Sync {} => todo!(),
+        ClapActionType::Sync { sync_trace } => todo!(),
         ClapActionType::GraphQL {} => todo!(),
     }
 

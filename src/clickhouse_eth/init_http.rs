@@ -1,205 +1,25 @@
-use ethers::providers::{Middleware, Provider, ProviderError, Ws};
-use ethers::types::{
-    Action, ActionType, Block, CallType, Res, RewardType, Trace, Transaction, TransactionReceipt,
-};
-use ethers::utils::keccak256;
-use klickhouse::{u256, Bytes, Row};
-use klickhouse::{Client, ClientOptions};
-use log::{debug, error, info, warn};
-use serde_json::json;
 use std::error::Error;
-use tokio::try_join;
-use tokio_retry::strategy::{jitter, ExponentialBackoff};
-use tokio_retry::Retry;
-use url::Url;
 
-use crate::ClapActionType;
+use ethers::{
+    providers::{Http, Middleware, Provider, ProviderError},
+    types::{Action, Block, Res, Trace, Transaction, TransactionReceipt},
+};
+use klickhouse::{u256, Client};
+use log::{debug, error, info, warn};
+use tokio::{task::JoinSet, try_join};
+use tokio_retry::{
+    strategy::{jitter, ExponentialBackoff},
+    Retry,
+};
 
-extern crate pretty_env_logger;
+use crate::clickhouse_eth::main::{BlockRow, EventRow, TraceRow, TransactionRow, WithdrawalRow};
 
-#[derive(Row, Clone, Debug, Default)]
-pub struct BlockRow {
-    pub hash: Bytes,
-    pub number: u64,
-    pub parentHash: Bytes,
-    pub uncles: Vec<Bytes>,
-    pub sha3Uncles: Bytes,
-    pub totalDifficulty: u256,
-    pub difficulty: u256,
-    pub miner: Bytes,
-    pub nonce: Bytes,
-    pub mixHash: Bytes,
-    pub baseFeePerGas: Option<u256>,
-    pub gasLimit: u256,
-    pub gasUsed: u256,
-    pub stateRoot: Bytes,
-    pub transactionsRoot: Bytes,
-    pub receiptsRoot: Bytes,
-    pub logsBloom: Bytes,
-    pub withdrawlsRoot: Option<Bytes>,
-    pub extraData: Bytes,
-    pub timestamp: u256,
-    pub size: u256,
-}
-
-#[derive(Row, Clone, Debug, Default)]
-pub struct TransactionRow {
-    pub hash: Bytes,
-    pub blockHash: Bytes,
-    pub blockNumber: u64,
-    pub blockTimestamp: u256,
-    pub transactionIndex: u64,
-    pub chainId: Option<u256>,
-    pub r#type: Option<u64>,
-    pub from: Bytes,
-    pub to: Option<Bytes>,
-    pub value: u256,
-    pub nonce: u256,
-    pub input: Bytes,
-    pub gas: u256,
-    pub gasPrice: Option<u256>,
-    pub maxFeePerGas: Option<u256>,
-    pub maxPriorityFeePerGas: Option<u256>,
-    pub r: u256,
-    pub s: u256,
-    pub v: u64,
-    pub accessList: Option<String>,
-    pub contractAddress: Option<Bytes>,
-    pub cumulativeGasUsed: u256,
-    pub effectiveGasPrice: Option<u256>,
-    pub gasUsed: u256,
-    pub logsBloom: Bytes,
-    pub root: Option<Bytes>,
-    pub status: Option<u64>,
-}
-
-#[derive(Row, Clone, Debug, Default)]
-pub struct EventRow {
-    pub blockHash: Bytes,
-    pub blockNumber: u64,
-    pub blockTimestamp: u256,
-    pub transactionHash: Bytes,
-    pub transactionIndex: u64,
-    pub logIndex: u256,
-    pub removed: bool,
-    pub topics: Vec<Bytes>,
-    pub data: Bytes,
-    pub address: Bytes,
-}
-
-#[derive(Row, Clone, Debug, Default)]
-pub struct WithdrawalRow {
-    pub blockHash: Bytes,
-    pub blockNumber: u64,
-    pub blockTimestamp: u256,
-    pub index: u64,
-    pub validatorIndex: u64,
-    pub address: Bytes,
-    pub amount: u256,
-}
-
-#[derive(Row, Clone, Debug)]
-pub struct TraceRow {
-    pub blockPos: u64,
-    /// Block Number
-    pub blockNumber: u64,
-    pub blockTimestamp: u256,
-    /// Block Hash
-    pub blockHash: Bytes,
-
-    /// Trace address, The list of addresses where the call was executed, the address of the parents, and the order of the current sub call
-    pub traceAddress: Vec<u64>,
-    /// Subtraces
-    pub subtraces: u64,
-    /// Transaction position
-    pub transactionPosition: Option<u64>,
-    /// Transaction hash
-    pub transactionHash: Option<Bytes>,
-
-    /// Error, See also [`TraceError`]
-    pub error: Option<String>,
-
-    /// Action
-    ///
-    // pub action: Action, // call create suicide reward
-    pub actionType: String, // Enum('Call', 'Create', 'Suicide', 'Reward')
-    /// Sender
-    pub actionCallFrom: Option<Bytes>,
-    /// Recipient
-    pub actionCallTo: Option<Bytes>,
-    /// Transferred Value
-    pub actionCallValue: Option<u256>,
-    /// Input data
-    pub actionCallInput: Option<Bytes>,
-    pub actionCallGas: Option<u256>,
-    /// The type of the call.
-    pub actionCallType: String, // none call callcode delegatecall staticcall
-    pub actionCreateFrom: Option<Bytes>,
-    pub actionCreateValue: Option<u256>,
-    pub actionCreateInit: Option<Bytes>,
-    pub actionCreateGas: Option<u256>,
-    pub actionSuicideAddress: Option<Bytes>,
-    pub actionSuicideRefundAddress: Option<Bytes>,
-    pub actionSuicideBalance: Option<u256>,
-    pub actionRewardAuthor: Option<Bytes>,
-    pub actionRewardValue: Option<u256>,
-    pub actionRewardType: String, // LowCardinality ('block', 'uncle', 'emptyStep', 'external')
-    /// Result
-    //  pub result: Option<Res>, // call {gasused, output} create {gas_used, code, address} none
-    pub resultType: String, // LowCardinality ('none', 'call', 'create')
-    pub resultCallGasUsed: Option<u256>,
-    pub resultCallOutput: Option<Bytes>,
-    pub resultCreateGasUsed: Option<u256>,
-    pub resultCreateCode: Option<Bytes>,
-    pub resultCreateAddress: Option<Bytes>,
-}
-
-pub async fn main(
-    clickhouse_uri: &str,
-    eth_uri: &str,
-    action_type: &ClapActionType,
-) -> Result<(), Box<dyn Error>> {
-    let clickhouse_url = Url::parse(clickhouse_uri).unwrap();
-    // warn!("db: {} path: {}", format!("{}:{}", clickhouse_url.host().unwrap(), clickhouse_url.port().unwrap()), clickhouse_url.path());
-
-    let options = if clickhouse_url.path() != "/default" || clickhouse_url.username().len() > 0 {
-        ClientOptions {
-            username: clickhouse_url.username().to_string(),
-            password: clickhouse_url.password().unwrap_or("").to_string(),
-            default_database: clickhouse_url.path().to_string(),
-        }
-    } else {
-        ClientOptions::default()
-    };
-
-    let clickhouse_client = Client::connect(
-        format!(
-            "{}:{}",
-            clickhouse_url.host().unwrap(),
-            clickhouse_url.port().unwrap()
-        ),
-        options,
-    )
-    .await?;
-
-    let provider = Provider::<Ws>::connect(eth_uri).await?;
-
-    match action_type {
-        ClapActionType::Init { from, init_trace } => {
-            init(clickhouse_client, provider, *from, *init_trace).await?;
-        }
-        ClapActionType::Sync {} => todo!(),
-        ClapActionType::GraphQL {} => graphql().await?,
-    }
-
-    Ok(())
-}
-
-async fn init(
+pub(crate) async fn init_http(
     client: Client,
-    provider: Provider<Ws>,
+    provider: Provider<Http>,
     from: u64,
     init_trace: bool,
+    batch: u64,
 ) -> Result<(), Box<dyn Error>> {
     debug!("start initializing schema");
     client
@@ -383,8 +203,6 @@ async fn init(
         .unwrap();
     debug!("schema initialized");
 
-    let batch: u64 = 1;
-
     let latest: u64 = provider.get_block_number().await?.as_u64();
     let to = latest / 1_000 * 1_000;
 
@@ -394,14 +212,14 @@ async fn init(
         .map(jitter) // add jitter to delays
         .take(3); // limit to 3 retries
 
-    if init_trace {
+    if !init_trace {
         let mut block_row_list = Vec::with_capacity((batch + 1_u64) as usize);
         let mut transaction_row_list = Vec::new();
         let mut event_row_list = Vec::new();
         let mut withdraw_row_list = Vec::new();
 
         async fn get_block_and_tx(
-            provider: &Provider<Ws>,
+            provider: &Provider<Http>,
             num: u64,
         ) -> Result<(Option<Block<Transaction>>, Vec<TransactionReceipt>), ProviderError> {
             let result = tokio::try_join!(
@@ -537,7 +355,7 @@ async fn init(
                 }
             }
 
-            if num % batch == 0 {
+            if (num - from + 1) % batch == 0 {
                 tokio::try_join!(
                     client.insert_native_block(
                         "INSERT INTO ethereum.blocks FORMAT native",
@@ -563,11 +381,11 @@ async fn init(
                 event_row_list.clear();
                 withdraw_row_list.clear();
 
-                info!("{} done", num)
+                info!("{} done blocks & txs", num)
             }
         }
 
-        tokio::try_join!(
+        try_join!(
             client.insert_native_block("INSERT INTO ethereum.blocks FORMAT native", block_row_list),
             client.insert_native_block(
                 "INSERT INTO ethereum.transactions FORMAT native",
@@ -582,143 +400,152 @@ async fn init(
         .unwrap();
     } else {
         let mut trace_row_list = Vec::new();
-        
+
         async fn get_block_traces(
-            provider: &Provider<Ws>,
-            num: u64,
-        ) -> Result<(Option<Block<ethers::types::H256>>, Vec<Trace>), ProviderError> {
-            let result = try_join!(
-                provider.get_block(num),
-                provider.trace_block(num.into())
-            );
-            if result.is_err() {
-                error!("{:?}", num);
-                error!("{:?}", result);
+            provider: &Provider<Http>,
+            nums: Vec<u64>,
+        ) -> Result<Vec<(Block<ethers::types::H256>, Vec<Trace>)>, Box<dyn Error>> {
+            let mut set = JoinSet::new();
+
+            for num in nums {
+                let provider = provider.clone();
+                set.spawn(async move {
+                    try_join!(provider.get_block(num), provider.trace_block(num.into()))
+                });
             }
 
-            result
+            let mut results = Vec::new();
+            while let Some(res) = set.join_next().await {
+                let join_result = res?;
+                let (block, traces) = join_result?;
+                let block = block.unwrap();
+                results.push((block, traces))
+            }
+
+            Ok(results)
         }
 
-        for num in from..=to {
-            let (block, traces) =
-                Retry::spawn(retry_strategy.clone(), || get_block_traces(&provider, num)).await?;
-            let block = block.unwrap(); 
+        for num in (from..=to).into_iter().step_by(batch as usize) {
+            let end = if num + batch > to + 1 {
+                to
+            } else {
+                num + batch
+            };
+            let nums: Vec<u64> = (num..end).collect();
 
-            for (index, trace) in traces.iter().enumerate() {
-                let mut trace_row = TraceRow {
-                    blockPos: index as u64,
-                    actionType: serde_json::to_string(&trace.action_type)?,
-                    actionCallFrom: None,
-                    actionCallTo: None,
-                    actionCallValue: None,
-                    actionCallInput: None,
-                    actionCallGas: None,
-                    actionCallType: "".to_owned(),
-                    actionCreateFrom: None,
-                    actionCreateValue: None,
-                    actionCreateInit: None,
-                    actionCreateGas: None,
-                    actionSuicideAddress: None,
-                    actionSuicideRefundAddress: None,
-                    actionSuicideBalance: None,
-                    actionRewardAuthor: None,
-                    actionRewardValue: None,
-                    actionRewardType: "".to_owned(),
-                    resultType: "".to_owned(),
-                    resultCallGasUsed: None,
-                    resultCallOutput: None,
-                    resultCreateGasUsed: None,
-                    resultCreateCode: None,
-                    resultCreateAddress: None,
-                    traceAddress: trace.trace_address.iter().map(|t| *t as u64).collect(),
-                    subtraces: trace.subtraces as u64,
-                    transactionPosition: trace
-                        .transaction_position
-                        .and_then(|pos| Some(pos as u64)),
-                    transactionHash: trace
-                        .transaction_hash
-                        .and_then(|h| Some(h.0.to_vec().into())),
-                    blockNumber: trace.block_number,
-                    blockTimestamp: u256(block.timestamp.into()),
-                    blockHash: trace.block_hash.0.to_vec().into(),
-                    error: trace.error.clone(),
-                };
+            let results = Retry::spawn(retry_strategy.clone(), || {
+                get_block_traces(&provider, nums.clone())
+            })
+            .await?;
 
-                // fill action
-                match &trace.action {
-                    Action::Call(call) => {
-                        trace_row.actionCallFrom = Some(call.from.0.to_vec().into());
-                        trace_row.actionCallTo = Some(call.to.0.to_vec().into());
-                        trace_row.actionCallType = serde_json::to_string(&call.call_type)?;
-                        trace_row.actionCallGas = Some(u256(call.gas.into()));
-                        trace_row.actionCallInput = Some(call.input.0.to_vec().into());
-                    }
-                    Action::Create(create) => {
-                        trace_row.actionCreateFrom = Some(create.from.0.to_vec().into());
-                        trace_row.actionCreateInit = Some(create.init.0.to_vec().into());
-                        trace_row.actionCreateValue = Some(u256(create.value.into()));
-                        trace_row.actionCreateGas = Some(u256(create.gas.into()));
-                    }
-                    Action::Suicide(suicide) => {
-                        trace_row.actionSuicideAddress = Some(suicide.address.0.to_vec().into());
-                        trace_row.actionSuicideBalance = Some(u256(suicide.balance.into()));
-                        trace_row.actionSuicideRefundAddress =
-                            Some(suicide.refund_address.0.to_vec().into());
-                    }
-                    Action::Reward(reward) => {
-                        trace_row.actionRewardAuthor = Some(reward.author.0.to_vec().into());
-                        trace_row.actionRewardType = serde_json::to_string(&reward.reward_type)?;
-                        trace_row.actionRewardValue = Some(u256(reward.value.into()));
-                    }
-                }
+            for (block, traces) in results {
+                for (index, trace) in traces.iter().enumerate() {
+                    let mut trace_row = TraceRow {
+                        blockPos: index as u64,
+                        actionType: serde_json::to_string(&trace.action_type)?,
+                        actionCallFrom: None,
+                        actionCallTo: None,
+                        actionCallValue: None,
+                        actionCallInput: None,
+                        actionCallGas: None,
+                        actionCallType: "".to_owned(),
+                        actionCreateFrom: None,
+                        actionCreateValue: None,
+                        actionCreateInit: None,
+                        actionCreateGas: None,
+                        actionSuicideAddress: None,
+                        actionSuicideRefundAddress: None,
+                        actionSuicideBalance: None,
+                        actionRewardAuthor: None,
+                        actionRewardValue: None,
+                        actionRewardType: "".to_owned(),
+                        resultType: "".to_owned(),
+                        resultCallGasUsed: None,
+                        resultCallOutput: None,
+                        resultCreateGasUsed: None,
+                        resultCreateCode: None,
+                        resultCreateAddress: None,
+                        traceAddress: trace.trace_address.iter().map(|t| *t as u64).collect(),
+                        subtraces: trace.subtraces as u64,
+                        transactionPosition: trace
+                            .transaction_position
+                            .and_then(|pos| Some(pos as u64)),
+                        transactionHash: trace
+                            .transaction_hash
+                            .and_then(|h| Some(h.0.to_vec().into())),
+                        blockNumber: trace.block_number,
+                        blockTimestamp: u256(block.timestamp.into()),
+                        blockHash: trace.block_hash.0.to_vec().into(),
+                        error: trace.error.clone(),
+                    };
 
-                match &trace.result {
-                    Some(result) => match result {
-                        Res::Call(call) => {
-                            trace_row.resultType = "call".to_owned();
-                            trace_row.resultCallGasUsed = Some(u256(call.gas_used.into()));
-                            trace_row.resultCallOutput = Some(call.output.0.to_vec().into());
+                    // fill action
+                    match &trace.action {
+                        Action::Call(call) => {
+                            trace_row.actionCallFrom = Some(call.from.0.to_vec().into());
+                            trace_row.actionCallTo = Some(call.to.0.to_vec().into());
+                            trace_row.actionCallType = serde_json::to_string(&call.call_type)?;
+                            trace_row.actionCallGas = Some(u256(call.gas.into()));
+                            trace_row.actionCallInput = Some(call.input.0.to_vec().into());
                         }
-                        Res::Create(create) => {
-                            trace_row.resultType = "create".to_owned();
-                            trace_row.resultCreateAddress = Some(create.address.0.to_vec().into());
-                            trace_row.resultCreateCode = Some(create.code.0.to_vec().into());
-                            trace_row.resultCreateGasUsed = Some(u256(create.gas_used.into()))
+                        Action::Create(create) => {
+                            trace_row.actionCreateFrom = Some(create.from.0.to_vec().into());
+                            trace_row.actionCreateInit = Some(create.init.0.to_vec().into());
+                            trace_row.actionCreateValue = Some(u256(create.value.into()));
+                            trace_row.actionCreateGas = Some(u256(create.gas.into()));
                         }
-                        Res::None => {
-                            // trace_row.resultType =
+                        Action::Suicide(suicide) => {
+                            trace_row.actionSuicideAddress =
+                                Some(suicide.address.0.to_vec().into());
+                            trace_row.actionSuicideBalance = Some(u256(suicide.balance.into()));
+                            trace_row.actionSuicideRefundAddress =
+                                Some(suicide.refund_address.0.to_vec().into());
                         }
-                    },
-                    None => {} //trace_row.resultType = "none".to_owned(),
-                }
+                        Action::Reward(reward) => {
+                            trace_row.actionRewardAuthor = Some(reward.author.0.to_vec().into());
+                            trace_row.actionRewardType =
+                                serde_json::to_string(&reward.reward_type)?;
+                            trace_row.actionRewardValue = Some(u256(reward.value.into()));
+                        }
+                    }
 
-                trace_row_list.push(trace_row);
+                    match &trace.result {
+                        Some(result) => match result {
+                            Res::Call(call) => {
+                                trace_row.resultType = "call".to_owned();
+                                trace_row.resultCallGasUsed = Some(u256(call.gas_used.into()));
+                                trace_row.resultCallOutput = Some(call.output.0.to_vec().into());
+                            }
+                            Res::Create(create) => {
+                                trace_row.resultType = "create".to_owned();
+                                trace_row.resultCreateAddress =
+                                    Some(create.address.0.to_vec().into());
+                                trace_row.resultCreateCode = Some(create.code.0.to_vec().into());
+                                trace_row.resultCreateGasUsed = Some(u256(create.gas_used.into()))
+                            }
+                            Res::None => {
+                                // trace_row.resultType =
+                            }
+                        },
+                        None => {} //trace_row.resultType = "none".to_owned(),
+                    }
 
-                if num % batch == 0 {
-                    trace_row_list.clear();
-                    client
-                        .insert_native_block(
-                            "INSERT INTO ethereum.traces FORMAT native",
-                            trace_row_list.to_vec(),
-                        )
-                        .await?;
+                    trace_row_list.push(trace_row);
                 }
             }
 
             client
-            .insert_native_block(
-                "INSERT INTO ethereum.traces FORMAT native",
-                trace_row_list.to_vec(),
-            )
-            .await?;
+                .insert_native_block(
+                    "INSERT INTO ethereum.traces FORMAT native",
+                    trace_row_list.to_vec(),
+                )
+                .await?;
+
+            trace_row_list.clear();
+
+            info!("{:?} done block traces", nums)
         }
     }
 
-
-
-    Ok(())
-}
-
-async fn graphql() -> Result<(), Box<dyn Error>> {
     Ok(())
 }

@@ -35,10 +35,19 @@ pub enum ClapActionType {
         from: u64,
 
         /// init trace (not block or tx)
-        #[arg(long="trace", default_value_t = false)]
-        init_trace: bool
+        #[arg(long="trace",  default_value_t = false)]
+        init_trace: bool,
+
+        /// init trace (not block or tx)
+        #[arg(long,  default_value_t = 1u64)]
+        batch: u64,
     },
-    Sync {},
+    Sync {
+        /// sync trace (not block or tx)
+        #[arg(long="trace",  default_value_t = false)]
+        sync_trace: bool
+
+    },
     GraphQL {},
 }
 
