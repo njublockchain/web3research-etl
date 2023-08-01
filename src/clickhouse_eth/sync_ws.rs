@@ -238,7 +238,7 @@ async fn interval_health_check(client: Client, provider: Provider<Ws>) -> Result
     let latest: u64 = provider.get_block_number().await?.as_u64();
     info!("updating to height {}", latest);
     // let from = local_height.max + 1;
-    let from = 0;
+    let from = latest - 100_000;
 
     #[derive(Row, Clone, Debug)]
     struct BlockHashRow {
@@ -279,14 +279,8 @@ async fn interval_health_check(client: Client, provider: Provider<Ws>) -> Result
         }
     }
 
-    let mut fus = Vec::new();
-    for num in from..=latest {
-        let fu = tokio::spawn(health_check(client.clone(), provider.clone(), num));
-        fus.push(fu)
-    }
-
-    for fu in fus {
-        fu.await?
+    for num in (from..=latest).rev() {
+        health_check(client.clone(), provider.clone(), num).await;
     }
 
     Ok(())
