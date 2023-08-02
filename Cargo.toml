@@ -17,7 +17,6 @@ tokio-retry = "0.3.0"
 klickhouse = "0.9.0"
 serde_json = "1.0.103"
 url = "2.4.0"
-juniper = "0.15.11"
 
 
 [dependencies.ethers]

@@ -4,7 +4,6 @@ use ethers::{
     providers::{Middleware, Provider, ProviderError, StreamExt, Ws},
     types::{Block, Transaction, TransactionReceipt, H256},
 };
-use juniper::futures::try_join;
 use klickhouse::{u256, Client, Row, Bytes, ClientOptions};
 use log::{debug, error, info, warn};
 use tokio_retry::{
@@ -184,7 +183,7 @@ async fn insert_block(
 
 async fn handle_block(client: Client, provider: Provider<Ws>, block: Block<H256>) {
     let num = block.number.unwrap().as_u64();
-    try_join!(
+    tokio::try_join!(
         client.execute(format!(
             "DELETE TABLE FROM ethereum.blocks WHERE number = {} ",
             num
@@ -255,7 +254,7 @@ async fn interval_health_check(client: Client, provider: Provider<Ws>) -> Result
             let block_on_chain = provider.get_block(num).await.unwrap().unwrap();
             if format!("0x{}", block.hash.to_lowercase()) != format!("{:#032x}", block_on_chain.hash.unwrap()) {
                 warn!("fix err block {}: {:?} != {:?}", num,  format!("0x{}", block.hash.to_lowercase()),  format!("{:#032x}", block_on_chain.hash.unwrap()));
-                try_join!(
+                tokio::try_join!(
                     client.execute(format!(
                         "DELETE TABLE FROM ethereum.blocks WHERE number = {} ",
                         num
