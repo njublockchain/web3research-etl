@@ -18,7 +18,6 @@ klickhouse = "0.9.0"
 serde_json = "1.0.103"
 url = "2.4.0"
 
-
 [dependencies.ethers]
 version = "2.0.7"
 features = ["ws"]
@@ -26,9 +25,6 @@ features = ["ws"]
 [dependencies.clap]
 version = "4.3.10"
 features = ["derive"]
-
-[dependencies.mongodb]
-version = "2.6.0"
 
 [dependencies.tokio]
 version = "1.29.1"

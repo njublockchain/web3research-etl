@@ -1,6 +1,5 @@
 mod clickhouse_eth;
 mod helpers;
-mod mongo_eth;
 
 use std::error::Error;
 
@@ -60,10 +59,6 @@ pub enum SupportedChain {
 async fn main() -> Result<(), Box<dyn Error>> {
     pretty_env_logger::init_timed();
     let args = Args::parse();
-
-    if args.db.starts_with("mongodb") && args.chain == SupportedChain::Ethereum {
-        mongo_eth::main(&args.db, &args.provider, &args.action_type).await?;
-    }
 
     if args.db.starts_with("clickhouse") {
         clickhouse_eth::main(&args.db, &args.provider, &args.action_type).await?;
