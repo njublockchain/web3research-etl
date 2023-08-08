@@ -1,12 +1,11 @@
 use std::error::Error;
 
 use ethers::{
-    providers::{Middleware, Provider, ProviderError, Ws},
-    types::{Block, Trace, Transaction, TransactionReceipt},
+    providers::{Http, Middleware, Provider, ProviderError, Ws},
+    types::{Block, Transaction, TransactionReceipt},
 };
 use klickhouse::Client;
 use log::{debug, error, info, warn};
-use tokio::{task::JoinSet, try_join};
 use tokio_retry::{
     strategy::{jitter, ExponentialBackoff},
     Retry,
@@ -16,11 +15,36 @@ use crate::clickhouse_scheme::ethereum::{
     BlockRow, EventRow, TraceRow, TransactionRow, WithdrawalRow,
 };
 
-pub(crate) async fn init_ws(
+pub async fn get_block_details(
+    provider: &Provider<Ws>,
+    trace_provider: &Provider<Http>,
+    num: u64,
+) -> Result<
+    (
+        Option<Block<Transaction>>,
+        Vec<TransactionReceipt>,
+        Vec<ethers::types::Trace>,
+    ),
+    ProviderError,
+> {
+    let result = tokio::try_join!(
+        provider.get_block_with_txs(num),
+        provider.get_block_receipts(num),
+        trace_provider.trace_block(num.into())
+    );
+    if result.is_err() {
+        error!("{:?}: {:?}", num, result);
+    }
+
+    result
+}
+
+
+pub(crate) async fn init(
     client: Client,
-    provider: Provider<Ws>,
+    provider_ws: Provider<Ws>,
     from: u64,
-    init_trace: bool,
+    trace_provider: Provider<Http>,
     batch: u64,
 ) -> Result<(), Box<dyn Error>> {
     debug!("start initializing schema");
@@ -205,7 +229,7 @@ pub(crate) async fn init_ws(
         .unwrap();
     debug!("schema initialized");
 
-    let latest: u64 = provider.get_block_number().await?.as_u64();
+    let latest: u64 = provider_ws.get_block_number().await?.as_u64();
     let to = latest / 1_000 * 1_000;
 
     warn!("target: {}", to);
@@ -214,157 +238,105 @@ pub(crate) async fn init_ws(
         .map(jitter) // add jitter to delays
         .take(3); // limit to 3 retries
 
-    if !init_trace {
-        let mut block_row_list = Vec::with_capacity((batch + 1_u64) as usize);
-        let mut transaction_row_list = Vec::new();
-        let mut event_row_list = Vec::new();
-        let mut withdraw_row_list = Vec::new();
+    let mut block_row_list = Vec::with_capacity((batch + 1_u64) as usize);
+    let mut transaction_row_list = Vec::new();
+    let mut event_row_list = Vec::new();
+    let mut withdraw_row_list = Vec::new();
 
-        async fn get_block_and_tx(
-            provider: &Provider<Ws>,
-            num: u64,
-        ) -> Result<(Option<Block<Transaction>>, Vec<TransactionReceipt>), ProviderError> {
-            let result = tokio::try_join!(
-                provider.get_block_with_txs(num),
-                provider.get_block_receipts(num),
-            );
-            if result.is_err() {
-                error!("{:?}", num);
-                error!("{:?}", result);
+    let mut trace_row_list = Vec::new();
+
+
+    for num in from..=to {
+        let (block, receipts, traces) = Retry::spawn(retry_strategy.clone(), || {
+            get_block_details(&provider_ws, &trace_provider, num)
+        })
+        .await?;
+
+        let block = block.as_ref().unwrap();
+
+        let block_row = BlockRow::from_ethers(block);
+        block_row_list.push(block_row);
+
+        for (transaction_index, transaction) in block.transactions.iter().enumerate() {
+            let receipt = &receipts[transaction_index];
+
+            let transaction_row = TransactionRow::from_ethers(block, transaction, receipt);
+            transaction_row_list.push(transaction_row);
+
+            for log in &receipt.logs {
+                let event_row = EventRow::from_ethers(block, transaction, log);
+                event_row_list.push(event_row);
             }
-
-            result
         }
 
-        for num in from..=to {
-            let (block, receipts) =
-                Retry::spawn(retry_strategy.clone(), || get_block_and_tx(&provider, num)).await?;
-
-            let block = block.as_ref().unwrap();
-
-            let block_row = BlockRow::from_ethers(block);
-            block_row_list.push(block_row);
-
-            for (transaction_index, transaction) in block.transactions.iter().enumerate() {
-                let receipt = &receipts[transaction_index];
-
-                let transaction_row = TransactionRow::from_ethers(block, transaction, receipt);
-                transaction_row_list.push(transaction_row);
-
-                for log in &receipt.logs {
-                    let event_row = EventRow::from_ethers(block, transaction, log);
-                    event_row_list.push(event_row);
-                }
+        if let Some(withdraws) = &block.withdrawals {
+            for withdraw in withdraws {
+                let withdraw_row = WithdrawalRow::from_ethers(block, withdraw);
+                withdraw_row_list.push(withdraw_row);
             }
+        }
 
-            if let Some(withdraws) = &block.withdrawals {
-                for withdraw in withdraws {
-                    let withdraw_row = WithdrawalRow::from_ethers(block, withdraw);
-                    withdraw_row_list.push(withdraw_row);
-                }
-            }
+        for (index, trace) in traces.into_iter().enumerate() {
+            let trace_row = TraceRow::from_ethers(block, &trace, index);
+            trace_row_list.push(trace_row);
+        }
 
-            if (num - from + 1) % batch == 0 {
-                tokio::try_join!(
-                    client.insert_native_block(
-                        "INSERT INTO ethereum.blocks FORMAT native",
-                        block_row_list.to_vec()
-                    ),
-                    client.insert_native_block(
-                        "INSERT INTO ethereum.transactions FORMAT native",
-                        transaction_row_list.to_vec()
-                    ),
-                    client.insert_native_block(
-                        "INSERT INTO ethereum.events FORMAT native",
-                        event_row_list.to_vec()
-                    ),
-                    client.insert_native_block(
-                        "INSERT INTO ethereum.withdraws FORMAT native",
-                        withdraw_row_list.to_vec()
-                    )
+        if (num - from + 1) % batch == 0 {
+            tokio::try_join!(
+                client.insert_native_block(
+                    "INSERT INTO ethereum.blocks FORMAT native",
+                    block_row_list.to_vec()
+                ),
+                client.insert_native_block(
+                    "INSERT INTO ethereum.transactions FORMAT native",
+                    transaction_row_list.to_vec()
+                ),
+                client.insert_native_block(
+                    "INSERT INTO ethereum.events FORMAT native",
+                    event_row_list.to_vec()
+                ),
+                client.insert_native_block(
+                    "INSERT INTO ethereum.withdraws FORMAT native",
+                    withdraw_row_list.to_vec()
+                ),
+                client.insert_native_block(
+                    "INSERT INTO ethereum.traces FORMAT native",
+                    trace_row_list.to_vec()
                 )
-                .unwrap();
+            )
+            .unwrap();
 
-                block_row_list.clear();
-                transaction_row_list.clear();
-                event_row_list.clear();
-                withdraw_row_list.clear();
+            block_row_list.clear();
+            transaction_row_list.clear();
+            event_row_list.clear();
+            withdraw_row_list.clear();
 
-                info!("{} done blocks & txs", num)
-            }
+            info!("{} done blocks & txs", num)
         }
 
         tokio::try_join!(
-            client.insert_native_block("INSERT INTO ethereum.blocks FORMAT native", block_row_list),
+            client.insert_native_block(
+                "INSERT INTO ethereum.blocks FORMAT native",
+                block_row_list.to_vec()
+            ),
             client.insert_native_block(
                 "INSERT INTO ethereum.transactions FORMAT native",
-                transaction_row_list
+                transaction_row_list.to_vec()
             ),
-            client.insert_native_block("INSERT INTO ethereum.events FORMAT native", event_row_list),
+            client.insert_native_block(
+                "INSERT INTO ethereum.events FORMAT native",
+                event_row_list.to_vec()
+            ),
             client.insert_native_block(
                 "INSERT INTO ethereum.withdraws FORMAT native",
-                withdraw_row_list
+                withdraw_row_list.to_vec()
+            ),
+            client.insert_native_block(
+                "INSERT INTO ethereum.traces FORMAT native",
+                trace_row_list.to_vec()
             )
         )
         .unwrap();
-    } else {
-        let mut trace_row_list = Vec::new();
-
-        async fn get_block_traces(
-            provider: &Provider<Ws>,
-            nums: Vec<u64>,
-        ) -> Result<Vec<(Block<ethers::types::H256>, Vec<Trace>)>, Box<dyn Error>> {
-            let mut set = JoinSet::new();
-
-            for num in nums {
-                let provider = provider.clone();
-                set.spawn(async move {
-                    try_join!(provider.get_block(num), provider.trace_block(num.into()))
-                });
-            }
-
-            let mut results = Vec::new();
-            while let Some(res) = set.join_next().await {
-                let join_result = res?;
-                let (block, traces) = join_result?;
-                let block = block.unwrap();
-                results.push((block, traces))
-            }
-
-            Ok(results)
-        }
-
-        for num in (from..=to).into_iter().step_by(batch as usize) {
-            let end = if num + batch > to + 1 {
-                to
-            } else {
-                num + batch
-            };
-            let nums: Vec<u64> = (num..end).collect();
-
-            let results = Retry::spawn(retry_strategy.clone(), || {
-                get_block_traces(&provider, nums.clone())
-            })
-            .await?;
-
-            for (block, traces) in results {
-                for (index, trace) in traces.iter().enumerate() {
-                    let trace_row = TraceRow::from_ethers(&block, trace, index);
-                    trace_row_list.push(trace_row);
-                }
-            }
-
-            client
-                .insert_native_block(
-                    "INSERT INTO ethereum.traces FORMAT native",
-                    trace_row_list.to_vec(),
-                )
-                .await?;
-
-            trace_row_list.clear();
-
-            info!("{:?} done block traces", nums)
-        }
     }
 
     Ok(())

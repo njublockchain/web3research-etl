@@ -1,11 +1,11 @@
-use ethers::providers::{Http, Provider, Ws};
+use ethers::providers::{Provider, Ws};
 use klickhouse::{Client, ClientOptions};
 use std::error::Error;
 use url::Url;
 
 use crate::ClapActionType;
 
-use super::{init_http, init_ws, sync_ws};
+use super::{init, sync};
 
 extern crate pretty_env_logger;
 
@@ -43,22 +43,27 @@ pub async fn main(
             )
             .await?;
 
-            if !init_trace {
-                let provider = Provider::<Ws>::connect(eth_uri).await?;
+            let provider_ws = Provider::<Ws>::connect(eth_uri).await?;
+            let trace_provider = Provider::try_from(init_trace)?;
 
-                init_ws::init_ws(clickhouse_client, provider, *from, *init_trace, *batch).await?;
-            } else {
-                let provider = Provider::<Http>::try_from(eth_uri)?;
-
-                init_http::init_http(clickhouse_client, provider, *from, *init_trace, *batch)
-                    .await?;
-            }
+            init::init(
+                clickhouse_client,
+                provider_ws,
+                *from,
+                trace_provider,
+                *batch,
+            )
+            .await?;
         }
         ClapActionType::Sync { sync_trace } => {
-            if !sync_trace {
-                sync_ws::sync_ws(clickhouse_url.clone(), options.clone(), eth_uri.to_owned()).await?;
-            }
-        },
+            sync::sync(
+                clickhouse_url.clone(),
+                options.clone(),
+                eth_uri.to_owned(),
+                sync_trace.to_owned(),
+            )
+            .await?;
+        }
         ClapActionType::GraphQL {} => todo!(),
     }
 

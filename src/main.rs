@@ -1,8 +1,8 @@
 mod clickhouse_eth;
-mod helpers;
 mod clickhouse_scheme;
-mod graph_scheme;
 mod graph;
+mod graph_scheme;
+mod helpers;
 
 use std::error::Error;
 
@@ -21,7 +21,7 @@ pub struct Args {
     #[arg(long, default_value = "mongodb://localhost:8545")]
     db: String,
 
-    #[arg(short, long)]
+    #[arg(short, long, default_value = "ws://localhost:8545")]
     provider: String,
 
     /// action type
@@ -36,19 +36,18 @@ pub enum ClapActionType {
         #[arg(long, default_value_t = 0)]
         from: u64,
 
-        /// init trace (not block or tx)
-        #[arg(long="trace",  default_value_t = false)]
-        init_trace: bool,
+        /// provider uri for init trace
+        #[arg(long = "trace", default_value = "http://localhost:8545")]
+        init_trace: String,
 
-        /// init trace (not block or tx)
-        #[arg(long,  default_value_t = 1u64)]
+        /// init batch size
+        #[arg(long, default_value_t = 1u64)]
         batch: u64,
     },
     Sync {
-        /// sync trace (not block or tx)
-        #[arg(long="trace",  default_value_t = false)]
-        sync_trace: bool
-
+        /// provider uri for sync trace
+        #[arg(long = "trace", default_value = "http://localhost:8545")]
+        sync_trace: String,
     },
     GraphQL {},
 }
