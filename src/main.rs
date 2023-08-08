@@ -1,5 +1,8 @@
 mod clickhouse_eth;
 mod helpers;
+mod clickhouse_scheme;
+mod graph_scheme;
+mod graph;
 
 use std::error::Error;
 

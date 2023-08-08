@@ -4,7 +4,7 @@ use ethers::{
     providers::{Middleware, Provider, ProviderError, StreamExt, Ws},
     types::{Block, Transaction, TransactionReceipt, H256},
 };
-use klickhouse::{u256, Client, Row, Bytes, ClientOptions};
+use klickhouse::{u256, Client, Row, ClientOptions};
 use log::{debug, error, info, warn};
 use tokio_retry::{
     strategy::{jitter, ExponentialBackoff},
@@ -12,7 +12,7 @@ use tokio_retry::{
 };
 use url::Url;
 
-use super::main::{BlockRow, EventRow, TransactionRow, WithdrawalRow};
+use crate::clickhouse_scheme::ethereum::{BlockRow, EventRow, TransactionRow, WithdrawalRow};
 
 async fn get_block_and_tx(
     provider: &Provider<Ws>,
@@ -129,7 +129,7 @@ async fn insert_block(
         transaction_row_list.push(transaction_row);
 
         for log in &receipt.logs {
-            let mut event_row = EventRow {
+            let event_row = EventRow {
                 blockHash: log.block_hash.unwrap().0.to_vec().into(),
                 blockNumber: log.block_number.unwrap().as_u64(),
                 blockTimestamp: u256(block.timestamp.into()),
@@ -164,7 +164,7 @@ async fn insert_block(
         }
     }
 
-    let results = tokio::try_join!(
+    tokio::try_join!(
         client.insert_native_block("INSERT INTO ethereum.blocks FORMAT native", block_row_list),
         client.insert_native_block(
             "INSERT INTO ethereum.transactions FORMAT native",
