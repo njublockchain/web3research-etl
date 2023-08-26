@@ -1,12 +1,11 @@
 mod clickhouse_eth;
 mod clickhouse_scheme;
-mod graph;
-mod graph_scheme;
 mod helpers;
-
-use std::error::Error;
-
 use clap::Parser;
+use ethers::providers::{Provider, Ws};
+use klickhouse::{Client, ClientOptions};
+use std::error::Error;
+use url::Url;
 
 extern crate pretty_env_logger;
 
@@ -14,16 +13,6 @@ extern crate pretty_env_logger;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 pub struct Args {
-    /// Name of the person to greet
-    #[arg(short, long, value_enum, default_value_t = SupportedChain::Ethereum)]
-    chain: SupportedChain,
-
-    #[arg(long, default_value = "mongodb://localhost:8545")]
-    db: String,
-
-    #[arg(short, long, default_value = "ws://localhost:8545")]
-    provider: String,
-
     /// action type
     #[command(subcommand)]
     action_type: ClapActionType,
@@ -32,6 +21,16 @@ pub struct Args {
 #[derive(clap::Subcommand, PartialEq, Eq, Debug)]
 pub enum ClapActionType {
     Init {
+        /// Name of the person to greet
+        #[arg(short, long, value_enum, default_value_t = SupportedChain::Ethereum)]
+        chain: SupportedChain,
+
+        #[arg(long, default_value = "clickhouse://localhost:9000")]
+        db: String,
+
+        #[arg(short, long, default_value = "ws://localhost:8545")]
+        provider: String,
+
         /// from block
         #[arg(long, default_value_t = 0)]
         from: u64,
@@ -45,11 +44,20 @@ pub enum ClapActionType {
         batch: u64,
     },
     Sync {
+        /// Name of the person to greet
+        #[arg(short, long, value_enum, default_value_t = SupportedChain::Ethereum)]
+        chain: SupportedChain,
+
+        #[arg(long, default_value = "clickhouse://localhost:9000")]
+        db: String,
+
+        #[arg(short, long, default_value = "ws://localhost:8545")]
+        provider: String,
+
         /// provider uri for sync trace
         #[arg(long = "trace", default_value = "http://localhost:8545")]
         sync_trace: String,
     },
-    GraphQL {},
 }
 
 #[derive(clap::ValueEnum, Clone, PartialEq, Eq, Debug)]
@@ -62,9 +70,77 @@ async fn main() -> Result<(), Box<dyn Error>> {
     pretty_env_logger::init_timed();
     let args = Args::parse();
 
-    if args.db.starts_with("clickhouse") {
-        clickhouse_eth::main(&args.db, &args.provider, &args.action_type).await?;
+    match args.action_type {
+        ClapActionType::Init {
+            chain,
+            db,
+            provider,
+            from,
+            init_trace,
+            batch,
+        } => {
+            let clickhouse_url = Url::parse(&db).unwrap();
+            // warn!("db: {} path: {}", format!("{}:{}", clickhouse_url.host().unwrap(), clickhouse_url.port().unwrap()), clickhouse_url.path());
+
+            let options =
+                if clickhouse_url.path() != "/default" || clickhouse_url.username().len() > 0 {
+                    ClientOptions {
+                        username: clickhouse_url.username().to_string(),
+                        password: clickhouse_url.password().unwrap_or("").to_string(),
+                        default_database: clickhouse_url.path().to_string(),
+                    }
+                } else {
+                    ClientOptions::default()
+                };
+
+            let clickhouse_client = Client::connect(
+                format!(
+                    "{}:{}",
+                    clickhouse_url.host().unwrap(),
+                    clickhouse_url.port().unwrap()
+                ),
+                options.clone(),
+            )
+            .await?;
+
+            let provider_ws = Provider::<Ws>::connect(provider).await?;
+            let trace_provider = Provider::try_from(init_trace)?;
+
+            clickhouse_eth::init::init(clickhouse_client, provider_ws, from, trace_provider, batch)
+                .await?;
+        }
+        ClapActionType::Sync {
+            chain,
+            db,
+            provider,
+            sync_trace,
+        } => {
+            let clickhouse_url = Url::parse(&db).unwrap();
+            // warn!("db: {} path: {}", format!("{}:{}", clickhouse_url.host().unwrap(), clickhouse_url.port().unwrap()), clickhouse_url.path());
+
+            let options =
+                if clickhouse_url.path() != "/default" || clickhouse_url.username().len() > 0 {
+                    ClientOptions {
+                        username: clickhouse_url.username().to_string(),
+                        password: clickhouse_url.password().unwrap_or("").to_string(),
+                        default_database: clickhouse_url.path().to_string(),
+                    }
+                } else {
+                    ClientOptions::default()
+                };
+
+            clickhouse_eth::sync::sync(
+                clickhouse_url.clone(),
+                options.clone(),
+                provider.to_owned(),
+                sync_trace.to_owned(),
+            )
+            .await?;
+        }
     }
+    // if args.db.starts_with("clickhouse") {
+    //     clickhouse_eth::main(&args.db, &args.provider, &args.action_type).await?;
+    // }
 
     Ok(())
 }

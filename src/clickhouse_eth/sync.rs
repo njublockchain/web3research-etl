@@ -123,6 +123,7 @@ async fn handle_block(
 async fn listen_updates(client: Client, provider: Provider<Ws>, trace_provider: Provider<Http>) {
     // if in db, update it
     // https://clickhouse.com/docs/en/guides/developer/deduplication
+    debug!("start listening to new blocks");
     let mut stream = provider.subscribe_blocks().await.unwrap();
 
     while let Some(block) = stream.next().await {

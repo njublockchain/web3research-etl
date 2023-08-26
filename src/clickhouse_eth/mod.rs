@@ -1,5 +1,4 @@
-mod init;
-mod sync;
-mod main;
+pub mod init;
+pub mod sync;
 
-pub use main::main;
+extern crate pretty_env_logger;

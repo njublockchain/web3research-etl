@@ -1,5 +1,6 @@
 use ethers::types::{Action, Block, Log, Res, Trace, Transaction, TransactionReceipt, Withdrawal};
 use klickhouse::{u256, Bytes, Row};
+use serde_variant::to_variant_name;
 
 #[derive(Row, Clone, Debug, Default)]
 pub struct BlockRow {
@@ -279,7 +280,7 @@ impl TraceRow {
     {
         let mut trace_row = Self {
             blockPos: index as u64,
-            actionType: serde_json::to_string(&trace.action_type).unwrap(),
+            actionType: to_variant_name(&trace.action_type).unwrap().to_string(),
             actionCallFrom: None,
             actionCallTo: None,
             actionCallValue: None,
@@ -319,7 +320,7 @@ impl TraceRow {
             Action::Call(call) => {
                 trace_row.actionCallFrom = Some(call.from.0.to_vec().into());
                 trace_row.actionCallTo = Some(call.to.0.to_vec().into());
-                trace_row.actionCallType = serde_json::to_string(&call.call_type).unwrap();
+                trace_row.actionCallType = to_variant_name(&call.call_type).unwrap().to_string();
                 trace_row.actionCallGas = Some(u256(call.gas.into()));
                 trace_row.actionCallInput = Some(call.input.0.to_vec().into());
             }
@@ -337,7 +338,8 @@ impl TraceRow {
             }
             Action::Reward(reward) => {
                 trace_row.actionRewardAuthor = Some(reward.author.0.to_vec().into());
-                trace_row.actionRewardType = serde_json::to_string(&reward.reward_type).unwrap();
+                trace_row.actionRewardType =
+                    to_variant_name(&reward.reward_type).unwrap().to_string();
                 trace_row.actionRewardValue = Some(u256(reward.value.into()));
             }
         }

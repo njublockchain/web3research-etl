@@ -36,7 +36,6 @@ macro_rules! option {
     };
 }
 
-
 pub mod u64 {
     use ethers::types::U64;
     use serde::{
