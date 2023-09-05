@@ -1,9 +1,12 @@
+mod clickhouse_btc;
 mod clickhouse_eth;
 mod clickhouse_scheme;
+mod clickhouse_tron;
 mod helpers;
 use clap::Parser;
 use ethers::providers::{Provider, Ws};
 use klickhouse::{Client, ClientOptions};
+use log::warn;
 use std::error::Error;
 use url::Url;
 
@@ -63,6 +66,8 @@ pub enum ClapActionType {
 #[derive(clap::ValueEnum, Clone, PartialEq, Eq, Debug)]
 pub enum SupportedChain {
     Ethereum,
+    Bitcoin,
+    Tron,
 }
 
 #[tokio::main(flavor = "multi_thread")]
@@ -79,35 +84,85 @@ async fn main() -> Result<(), Box<dyn Error>> {
             init_trace,
             batch,
         } => {
-            let clickhouse_url = Url::parse(&db).unwrap();
-            // warn!("db: {} path: {}", format!("{}:{}", clickhouse_url.host().unwrap(), clickhouse_url.port().unwrap()), clickhouse_url.path());
+            match chain {
+                SupportedChain::Bitcoin => {
+                    let clickhouse_url = Url::parse(&db).unwrap();
+                    // warn!("db: {} path: {}", format!("{}:{}", clickhouse_url.host().unwrap(), clickhouse_url.port().unwrap()), clickhouse_url.path());
 
-            let options =
-                if clickhouse_url.path() != "/default" || clickhouse_url.username().len() > 0 {
-                    ClientOptions {
-                        username: clickhouse_url.username().to_string(),
-                        password: clickhouse_url.password().unwrap_or("").to_string(),
-                        default_database: clickhouse_url.path().to_string(),
-                    }
-                } else {
-                    ClientOptions::default()
-                };
+                    let options = if clickhouse_url.path() != "/default"
+                        || clickhouse_url.username().len() > 0
+                    {
+                        warn!("auth enabled for clickhouse");
+                        ClientOptions {
+                            username: clickhouse_url.username().to_string(),
+                            password: clickhouse_url.password().unwrap_or("").to_string(),
+                            default_database: clickhouse_url.path().to_string(),
+                        }
+                    } else {
+                        ClientOptions::default()
+                    };
 
-            let clickhouse_client = Client::connect(
-                format!(
-                    "{}:{}",
-                    clickhouse_url.host().unwrap(),
-                    clickhouse_url.port().unwrap()
-                ),
-                options.clone(),
-            )
-            .await?;
+                    let clickhouse_client = Client::connect(
+                        format!(
+                            "{}:{}",
+                            clickhouse_url.host().unwrap(),
+                            clickhouse_url.port().unwrap()
+                        ),
+                        options.clone(),
+                    )
+                    .await?;
 
-            let provider_ws = Provider::<Ws>::connect(provider).await?;
-            let trace_provider = Provider::try_from(init_trace)?;
+                    let rpc = bitcoincore_rpc::Client::new(&provider,
+                        bitcoincore_rpc::Auth::UserPass("btcd".to_string(), "pass".to_string())).unwrap();
 
-            clickhouse_eth::init::init(clickhouse_client, provider_ws, from, trace_provider, batch)
-                .await?;
+                    clickhouse_btc::init::init(
+                        clickhouse_client,
+                        rpc,
+                        from,
+                        batch,
+                    )
+                    .await?;
+                }
+                SupportedChain::Ethereum => {
+                    let clickhouse_url = Url::parse(&db).unwrap();
+                    // warn!("db: {} path: {}", format!("{}:{}", clickhouse_url.host().unwrap(), clickhouse_url.port().unwrap()), clickhouse_url.path());
+
+                    let options = if clickhouse_url.path() != "/default"
+                        || clickhouse_url.username().len() > 0
+                    {
+                        ClientOptions {
+                            username: clickhouse_url.username().to_string(),
+                            password: clickhouse_url.password().unwrap_or("").to_string(),
+                            default_database: clickhouse_url.path().to_string(),
+                        }
+                    } else {
+                        ClientOptions::default()
+                    };
+
+                    let clickhouse_client = Client::connect(
+                        format!(
+                            "{}:{}",
+                            clickhouse_url.host().unwrap(),
+                            clickhouse_url.port().unwrap()
+                        ),
+                        options.clone(),
+                    )
+                    .await?;
+
+                    let provider_ws = Provider::<Ws>::connect(provider).await?;
+                    let trace_provider = Provider::try_from(init_trace)?;
+
+                    clickhouse_eth::init::init(
+                        clickhouse_client,
+                        provider_ws,
+                        from,
+                        trace_provider,
+                        batch,
+                    )
+                    .await?;
+                }
+                SupportedChain::Tron => {}
+            }
         }
         ClapActionType::Sync {
             chain,
@@ -115,27 +170,34 @@ async fn main() -> Result<(), Box<dyn Error>> {
             provider,
             sync_trace,
         } => {
-            let clickhouse_url = Url::parse(&db).unwrap();
-            // warn!("db: {} path: {}", format!("{}:{}", clickhouse_url.host().unwrap(), clickhouse_url.port().unwrap()), clickhouse_url.path());
+            match chain {
+                SupportedChain::Bitcoin => {}
+                SupportedChain::Ethereum => {
+                    let clickhouse_url = Url::parse(&db).unwrap();
+                    // warn!("db: {} path: {}", format!("{}:{}", clickhouse_url.host().unwrap(), clickhouse_url.port().unwrap()), clickhouse_url.path());
 
-            let options =
-                if clickhouse_url.path() != "/default" || clickhouse_url.username().len() > 0 {
-                    ClientOptions {
-                        username: clickhouse_url.username().to_string(),
-                        password: clickhouse_url.password().unwrap_or("").to_string(),
-                        default_database: clickhouse_url.path().to_string(),
-                    }
-                } else {
-                    ClientOptions::default()
-                };
+                    let options = if clickhouse_url.path() != "/default"
+                        || clickhouse_url.username().len() > 0
+                    {
+                        ClientOptions {
+                            username: clickhouse_url.username().to_string(),
+                            password: clickhouse_url.password().unwrap_or("").to_string(),
+                            default_database: clickhouse_url.path().to_string(),
+                        }
+                    } else {
+                        ClientOptions::default()
+                    };
 
-            clickhouse_eth::sync::sync(
-                clickhouse_url.clone(),
-                options.clone(),
-                provider.to_owned(),
-                sync_trace.to_owned(),
-            )
-            .await?;
+                    clickhouse_eth::sync::sync(
+                        clickhouse_url.clone(),
+                        options.clone(),
+                        provider.to_owned(),
+                        sync_trace.to_owned(),
+                    )
+                    .await?;
+                }
+                SupportedChain::Tron => {}
+            }
         }
     }
     // if args.db.starts_with("clickhouse") {
