@@ -142,6 +142,11 @@ struct BlockHashRow {
     hash: String,
 }
 
+#[derive(Row, Clone, Debug)]
+struct BlockTraceCountRaw {
+    count: u64,
+}
+
 async fn health_check(
     client: Client,
     provider: &Provider<Ws>,
@@ -198,6 +203,51 @@ async fn health_check(
             insert_block(&client, &provider, trace_provider, num)
                 .await
                 .unwrap();
+        } else {
+            // check traces
+            let block_trace_count = client
+                .query_one::<BlockTraceCountRaw>(format!(
+                    "SELECT count(*) as count FROM ethereum.traces WHERE blockNumber = {}",
+                    num
+                ))
+                .await;
+            match block_trace_count {
+                Ok(c) => {
+                    if c.count == 0 {
+                        warn!("fix err block {}: no traces", num);
+                        tokio::try_join!(
+                            client.execute(format!(
+                                "DELETE TABLE FROM ethereum.blocks WHERE number = {} ",
+                                num
+                            )),
+                            client.execute(format!(
+                                "DELETE TABLE FROM ethereum.transactions WHERE blockNumber = {}') ",
+                                num
+                            )),
+                            client.execute(format!(
+                                "DELETE TABLE FROM ethereum.events WHERE blockNumber = {}') ",
+                                num
+                            )),
+                            client.execute(format!(
+                                "DELETE TABLE FROM ethereum.withdraws WHERE blockNumber = {}",
+                                num
+                            )),
+                            client.execute(format!(
+                                "DELETE TABLE FROM ethereum.traces WHERE blockNumber = {}",
+                                num
+                            ))
+                        )
+                        .ok(); // ignore error
+
+                        insert_block(&client, &provider, trace_provider, num)
+                            .await
+                            .unwrap();
+                    }
+                }
+                Err(e) => {
+                    error!("{}", e)
+                }
+            }
         }
     }
 }
@@ -256,7 +306,7 @@ pub(crate) async fn sync(
         trace_provider_for_listen,
     ));
 
-    let mut interval = tokio::time::interval(Duration::from_secs(60 * 60 * 12));
+    let mut interval = tokio::time::interval(Duration::from_secs(60 * 60 * 4));
     loop {
         interval.tick().await;
         let clickhouse_client_for_health = Client::connect(
