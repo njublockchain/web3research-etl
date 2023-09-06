@@ -3,26 +3,27 @@ use klickhouse::{u256, Bytes, Row};
 use serde_variant::to_variant_name;
 
 #[derive(Row, Clone, Debug, Default)]
+#[klickhouse(rename_all = "camelCase")]
 pub struct BlockRow {
     pub hash: Bytes,
     pub number: u64,
-    pub parentHash: Bytes,
+    pub parent_hash: Bytes,
     pub uncles: Vec<Bytes>,
-    pub sha3Uncles: Bytes,
-    pub totalDifficulty: u256,
+    pub sha3_uncles: Bytes,
+    pub total_difficulty: u256,
     pub difficulty: u256,
     pub miner: Bytes,
     pub nonce: Bytes,
-    pub mixHash: Bytes,
-    pub baseFeePerGas: Option<u256>,
-    pub gasLimit: u256,
-    pub gasUsed: u256,
-    pub stateRoot: Bytes,
-    pub transactionsRoot: Bytes,
-    pub receiptsRoot: Bytes,
-    pub logsBloom: Bytes,
-    pub withdrawlsRoot: Option<Bytes>,
-    pub extraData: Bytes,
+    pub mix_hash: Bytes,
+    pub base_fee_per_gas: Option<u256>,
+    pub gas_limit: u256,
+    pub gas_used: u256,
+    pub state_root: Bytes,
+    pub transactions_root: Bytes,
+    pub receipts_root: Bytes,
+    pub logs_bloom: Bytes,
+    pub withdrawls_root: Option<Bytes>,
+    pub extra_data: Bytes,
     pub timestamp: u256,
     pub size: u256,
 }
@@ -35,31 +36,31 @@ impl BlockRow {
         Self {
             hash: block.hash.unwrap().0.to_vec().into(), //block.hash.unwrap()),
             number: block.number.unwrap().as_u64(),
-            parentHash: block.parent_hash.0.to_vec().into(),
+            parent_hash: block.parent_hash.0.to_vec().into(),
             uncles: block
                 .uncles
                 .iter()
                 .map(|uncle| uncle.0.to_vec().into())
                 .collect(),
-            sha3Uncles: block.uncles_hash.0.to_vec().into(),
-            totalDifficulty: u256(block.total_difficulty.unwrap().into()),
+            sha3_uncles: block.uncles_hash.0.to_vec().into(),
+            total_difficulty: u256(block.total_difficulty.unwrap().into()),
             difficulty: u256(block.difficulty.into()),
             miner: block.author.unwrap().0.to_vec().into(),
             nonce: block.nonce.unwrap().0.to_vec().into(),
-            mixHash: block.mix_hash.unwrap().0.to_vec().into(),
-            baseFeePerGas: block
+            mix_hash: block.mix_hash.unwrap().0.to_vec().into(),
+            base_fee_per_gas: block
                 .base_fee_per_gas
                 .and_then(|fee| Some(u256(fee.into()))),
-            gasLimit: u256(block.gas_limit.into()),
-            gasUsed: u256(block.gas_used.into()),
-            stateRoot: block.state_root.0.to_vec().into(),
-            transactionsRoot: block.transactions_root.0.to_vec().into(),
-            receiptsRoot: block.receipts_root.0.to_vec().into(),
-            logsBloom: block.logs_bloom.unwrap().0.to_vec().into(),
-            withdrawlsRoot: block
+            gas_limit: u256(block.gas_limit.into()),
+            gas_used: u256(block.gas_used.into()),
+            state_root: block.state_root.0.to_vec().into(),
+            transactions_root: block.transactions_root.0.to_vec().into(),
+            receipts_root: block.receipts_root.0.to_vec().into(),
+            logs_bloom: block.logs_bloom.unwrap().0.to_vec().into(),
+            withdrawls_root: block
                 .withdrawals_root
                 .and_then(|root| Some(root.0.to_vec().into())),
-            extraData: block.extra_data.to_vec().into(),
+            extra_data: block.extra_data.to_vec().into(),
             timestamp: u256(block.timestamp.into()),
             size: u256(block.size.unwrap().into()),
         }
@@ -67,13 +68,14 @@ impl BlockRow {
 }
 
 #[derive(Row, Clone, Debug, Default)]
+#[klickhouse(rename_all = "camelCase")]
 pub struct TransactionRow {
     pub hash: Bytes,
-    pub blockHash: Bytes,
-    pub blockNumber: u64,
-    pub blockTimestamp: u256,
-    pub transactionIndex: u64,
-    pub chainId: Option<u256>,
+    pub block_hash: Bytes,
+    pub block_number: u64,
+    pub block_timestamp: u256,
+    pub transaction_index: u64,
+    pub chain_id: Option<u256>,
     pub r#type: Option<u64>,
     pub from: Bytes,
     pub to: Option<Bytes>,
@@ -81,18 +83,18 @@ pub struct TransactionRow {
     pub nonce: u256,
     pub input: Bytes,
     pub gas: u256,
-    pub gasPrice: Option<u256>,
-    pub maxFeePerGas: Option<u256>,
-    pub maxPriorityFeePerGas: Option<u256>,
+    pub gas_price: Option<u256>,
+    pub max_fee_per_gas: Option<u256>,
+    pub max_priority_fee_per_gas: Option<u256>,
     pub r: u256,
     pub s: u256,
     pub v: u64,
-    pub accessList: Option<String>,
-    pub contractAddress: Option<Bytes>,
-    pub cumulativeGasUsed: u256,
-    pub effectiveGasPrice: Option<u256>,
-    pub gasUsed: u256,
-    pub logsBloom: Bytes,
+    pub access_list: Option<String>,
+    pub contract_address: Option<Bytes>,
+    pub cumulative_gas_used: u256,
+    pub effective_gas_price: Option<u256>,
+    pub gas_used: u256,
+    pub logs_bloom: Bytes,
     pub root: Option<Bytes>,
     pub status: Option<u64>,
 }
@@ -108,11 +110,11 @@ impl TransactionRow {
     {
         Self {
             hash: transaction.hash.0.to_vec().into(),
-            blockHash: transaction.block_hash.unwrap().0.to_vec().into(),
-            blockNumber: transaction.block_number.unwrap().as_u64(),
-            blockTimestamp: u256(block.timestamp.into()),
-            transactionIndex: transaction.transaction_index.unwrap().as_u64(),
-            chainId: transaction.chain_id.and_then(|id| Some(u256(id.into()))),
+            block_hash: transaction.block_hash.unwrap().0.to_vec().into(),
+            block_number: transaction.block_number.unwrap().as_u64(),
+            block_timestamp: u256(block.timestamp.into()),
+            transaction_index: transaction.transaction_index.unwrap().as_u64(),
+            chain_id: transaction.chain_id.and_then(|id| Some(u256(id.into()))),
             r#type: transaction.transaction_type.and_then(|t| Some(t.as_u64())),
             from: transaction.from.0.to_vec().into(),
             to: transaction.to.and_then(|to| Some(to.0.to_vec().into())),
@@ -120,31 +122,31 @@ impl TransactionRow {
             nonce: u256(transaction.nonce.into()),
             input: transaction.input.to_vec().into(),
             gas: u256(transaction.gas.into()),
-            gasPrice: transaction
+            gas_price: transaction
                 .gas_price
                 .and_then(|price| Some(u256(price.into()))),
-            maxFeePerGas: transaction
+            max_fee_per_gas: transaction
                 .max_fee_per_gas
                 .and_then(|fee| Some(u256(fee.into()))),
-            maxPriorityFeePerGas: transaction
+            max_priority_fee_per_gas: transaction
                 .max_priority_fee_per_gas
                 .and_then(|fee| Some(u256(fee.into()))),
             r: u256(transaction.r.into()),
             s: u256(transaction.s.into()),
             v: transaction.v.as_u64(),
-            accessList: transaction
+            access_list: transaction
                 .access_list
                 .as_ref()
                 .and_then(|al| Some(serde_json::to_string(&al.clone().to_owned()).unwrap())),
-            contractAddress: receipt
+            contract_address: receipt
                 .contract_address
                 .and_then(|contract| Some(contract.0.to_vec().into())),
-            cumulativeGasUsed: u256(receipt.cumulative_gas_used.into()),
-            effectiveGasPrice: receipt
+            cumulative_gas_used: u256(receipt.cumulative_gas_used.into()),
+            effective_gas_price: receipt
                 .effective_gas_price
                 .and_then(|price| Some(u256(price.into()))),
-            gasUsed: u256(receipt.gas_used.unwrap().into()),
-            logsBloom: receipt.logs_bloom.0.to_vec().into(),
+            gas_used: u256(receipt.gas_used.unwrap().into()),
+            logs_bloom: receipt.logs_bloom.0.to_vec().into(),
             root: receipt.root.and_then(|root| Some(root.0.to_vec().into())), // Only present before activation of [EIP-658]
             status: receipt.status.and_then(|status| Some(status.as_u64())), // Only present after activation of [EIP-658]
         }
@@ -152,13 +154,14 @@ impl TransactionRow {
 }
 
 #[derive(Row, Clone, Debug, Default)]
+#[klickhouse(rename_all = "camelCase")]
 pub struct EventRow {
-    pub blockHash: Bytes,
-    pub blockNumber: u64,
-    pub blockTimestamp: u256,
-    pub transactionHash: Bytes,
-    pub transactionIndex: u64,
-    pub logIndex: u256,
+    pub block_hash: Bytes,
+    pub block_number: u64,
+    pub block_timestamp: u256,
+    pub transaction_hash: Bytes,
+    pub transaction_index: u64,
+    pub log_index: u256,
     pub removed: bool,
     pub topics: Vec<Bytes>,
     pub data: Bytes,
@@ -171,12 +174,12 @@ impl EventRow {
         T: serde::ser::Serialize,
     {
         Self {
-            blockHash: log.block_hash.unwrap().0.to_vec().into(),
-            blockNumber: log.block_number.unwrap().as_u64(),
-            blockTimestamp: u256(block.timestamp.into()),
-            transactionHash: transaction.hash.0.to_vec().into(),
-            transactionIndex: transaction.transaction_index.unwrap().as_u64(),
-            logIndex: u256(log.log_index.unwrap().into()),
+            block_hash: log.block_hash.unwrap().0.to_vec().into(),
+            block_number: log.block_number.unwrap().as_u64(),
+            block_timestamp: u256(block.timestamp.into()),
+            transaction_hash: transaction.hash.0.to_vec().into(),
+            transaction_index: transaction.transaction_index.unwrap().as_u64(),
+            log_index: u256(log.log_index.unwrap().into()),
             removed: log.removed.unwrap(),
             topics: log
                 .topics
@@ -190,12 +193,13 @@ impl EventRow {
 }
 
 #[derive(Row, Clone, Debug, Default)]
+#[klickhouse(rename_all = "camelCase")]
 pub struct WithdrawalRow {
-    pub blockHash: Bytes,
-    pub blockNumber: u64,
-    pub blockTimestamp: u256,
+    pub block_hash: Bytes,
+    pub block_number: u64,
+    pub block_timestamp: u256,
     pub index: u64,
-    pub validatorIndex: u64,
+    pub validator_index: u64,
     pub address: Bytes,
     pub amount: u256,
 }
@@ -206,11 +210,11 @@ impl WithdrawalRow {
         T: serde::ser::Serialize,
     {
         Self {
-            blockHash: block.hash.unwrap().0.to_vec().into(),
-            blockNumber: block.number.unwrap().as_u64(),
-            blockTimestamp: u256(block.timestamp.into()),
+            block_hash: block.hash.unwrap().0.to_vec().into(),
+            block_number: block.number.unwrap().as_u64(),
+            block_timestamp: u256(block.timestamp.into()),
             index: withdraw.index.as_u64(),
-            validatorIndex: withdraw.validator_index.as_u64(),
+            validator_index: withdraw.validator_index.as_u64(),
             address: withdraw.address.0.to_vec().into(),
             amount: u256(withdraw.amount.into()),
         }
@@ -218,22 +222,23 @@ impl WithdrawalRow {
 }
 
 #[derive(Row, Clone, Debug)]
+#[klickhouse(rename_all = "camelCase")]
 pub struct TraceRow {
-    pub blockPos: u64,
+    pub block_pos: u64,
     /// Block Number
-    pub blockNumber: u64,
-    pub blockTimestamp: u256,
+    pub block_number: u64,
+    pub block_timestamp: u256,
     /// Block Hash
-    pub blockHash: Bytes,
+    pub block_hash: Bytes,
 
     /// Trace address, The list of addresses where the call was executed, the address of the parents, and the order of the current sub call
-    pub traceAddress: Vec<u64>,
+    pub trace_address: Vec<u64>,
     /// Subtraces
     pub subtraces: u64,
     /// Transaction position
-    pub transactionPosition: Option<u64>,
+    pub transaction_position: Option<u64>,
     /// Transaction hash
-    pub transactionHash: Option<Bytes>,
+    pub transaction_hash: Option<Bytes>,
 
     /// Error, See also [`TraceError`]
     pub error: Option<String>,
@@ -241,36 +246,36 @@ pub struct TraceRow {
     /// Action
     ///
     // pub action: Action, // call create suicide reward
-    pub actionType: String, // Enum('Call', 'Create', 'Suicide', 'Reward')
+    pub action_type: String, // Enum('Call', 'Create', 'Suicide', 'Reward')
     /// Sender
-    pub actionCallFrom: Option<Bytes>,
+    pub action_call_from: Option<Bytes>,
     /// Recipient
-    pub actionCallTo: Option<Bytes>,
+    pub action_call_to: Option<Bytes>,
     /// Transferred Value
-    pub actionCallValue: Option<u256>,
+    pub action_call_value: Option<u256>,
     /// Input data
-    pub actionCallInput: Option<Bytes>,
-    pub actionCallGas: Option<u256>,
+    pub action_call_input: Option<Bytes>,
+    pub action_call_gas: Option<u256>,
     /// The type of the call.
-    pub actionCallType: String, // none call callcode delegatecall staticcall
-    pub actionCreateFrom: Option<Bytes>,
-    pub actionCreateValue: Option<u256>,
-    pub actionCreateInit: Option<Bytes>,
-    pub actionCreateGas: Option<u256>,
-    pub actionSuicideAddress: Option<Bytes>,
-    pub actionSuicideRefundAddress: Option<Bytes>,
-    pub actionSuicideBalance: Option<u256>,
-    pub actionRewardAuthor: Option<Bytes>,
-    pub actionRewardValue: Option<u256>,
-    pub actionRewardType: String, // LowCardinality ('block', 'uncle', 'emptyStep', 'external')
+    pub action_call_type: String, // none call callcode delegatecall staticcall
+    pub action_create_from: Option<Bytes>,
+    pub action_create_value: Option<u256>,
+    pub action_create_init: Option<Bytes>,
+    pub action_create_gas: Option<u256>,
+    pub action_suicide_address: Option<Bytes>,
+    pub action_suicide_refund_address: Option<Bytes>,
+    pub action_suicide_balance: Option<u256>,
+    pub action_reward_author: Option<Bytes>,
+    pub action_reward_value: Option<u256>,
+    pub action_reward_type: String, // LowCardinality ('block', 'uncle', 'emptyStep', 'external')
     /// Result
     //  pub result: Option<Res>, // call {gasused, output} create {gas_used, code, address} none
-    pub resultType: String, // LowCardinality ('none', 'call', 'create')
-    pub resultCallGasUsed: Option<u256>,
-    pub resultCallOutput: Option<Bytes>,
-    pub resultCreateGasUsed: Option<u256>,
-    pub resultCreateCode: Option<Bytes>,
-    pub resultCreateAddress: Option<Bytes>,
+    pub result_type: String, // LowCardinality ('none', 'call', 'create')
+    pub result_call_gas_used: Option<u256>,
+    pub result_call_output: Option<Bytes>,
+    pub result_create_gas_used: Option<u256>,
+    pub result_create_code: Option<Bytes>,
+    pub result_create_address: Option<Bytes>,
 }
 
 impl TraceRow {
@@ -279,83 +284,83 @@ impl TraceRow {
         T: serde::ser::Serialize,
     {
         let mut trace_row = Self {
-            blockPos: index as u64,
-            actionType: to_variant_name(&trace.action_type).unwrap().to_string(),
-            actionCallFrom: None,
-            actionCallTo: None,
-            actionCallValue: None,
-            actionCallInput: None,
-            actionCallGas: None,
-            actionCallType: "".to_owned(),
-            actionCreateFrom: None,
-            actionCreateValue: None,
-            actionCreateInit: None,
-            actionCreateGas: None,
-            actionSuicideAddress: None,
-            actionSuicideRefundAddress: None,
-            actionSuicideBalance: None,
-            actionRewardAuthor: None,
-            actionRewardValue: None,
-            actionRewardType: "".to_owned(),
-            resultType: "".to_owned(),
-            resultCallGasUsed: None,
-            resultCallOutput: None,
-            resultCreateGasUsed: None,
-            resultCreateCode: None,
-            resultCreateAddress: None,
-            traceAddress: trace.trace_address.iter().map(|t| *t as u64).collect(),
+            block_pos: index as u64,
+            action_type: to_variant_name(&trace.action_type).unwrap().to_string(),
+            action_call_from: None,
+            action_call_to: None,
+            action_call_value: None,
+            action_call_input: None,
+            action_call_gas: None,
+            action_call_type: "".to_owned(),
+            action_create_from: None,
+            action_create_value: None,
+            action_create_init: None,
+            action_create_gas: None,
+            action_suicide_address: None,
+            action_suicide_refund_address: None,
+            action_suicide_balance: None,
+            action_reward_author: None,
+            action_reward_value: None,
+            action_reward_type: "".to_owned(),
+            result_type: "".to_owned(),
+            result_call_gas_used: None,
+            result_call_output: None,
+            result_create_gas_used: None,
+            result_create_code: None,
+            result_create_address: None,
+            trace_address: trace.trace_address.iter().map(|t| *t as u64).collect(),
             subtraces: trace.subtraces as u64,
-            transactionPosition: trace.transaction_position.and_then(|pos| Some(pos as u64)),
-            transactionHash: trace
+            transaction_position: trace.transaction_position.and_then(|pos| Some(pos as u64)),
+            transaction_hash: trace
                 .transaction_hash
                 .and_then(|h| Some(h.0.to_vec().into())),
-            blockNumber: trace.block_number,
-            blockTimestamp: u256(block.timestamp.into()),
-            blockHash: trace.block_hash.0.to_vec().into(),
+            block_number: trace.block_number,
+            block_timestamp: u256(block.timestamp.into()),
+            block_hash: trace.block_hash.0.to_vec().into(),
             error: trace.error.clone(),
         };
 
         // fill action
         match &trace.action {
             Action::Call(call) => {
-                trace_row.actionCallFrom = Some(call.from.0.to_vec().into());
-                trace_row.actionCallTo = Some(call.to.0.to_vec().into());
-                trace_row.actionCallType = to_variant_name(&call.call_type).unwrap().to_string();
-                trace_row.actionCallGas = Some(u256(call.gas.into()));
-                trace_row.actionCallInput = Some(call.input.0.to_vec().into());
+                trace_row.action_call_from = Some(call.from.0.to_vec().into());
+                trace_row.action_call_to = Some(call.to.0.to_vec().into());
+                trace_row.action_call_type = to_variant_name(&call.call_type).unwrap().to_string();
+                trace_row.action_call_gas = Some(u256(call.gas.into()));
+                trace_row.action_call_input = Some(call.input.0.to_vec().into());
             }
             Action::Create(create) => {
-                trace_row.actionCreateFrom = Some(create.from.0.to_vec().into());
-                trace_row.actionCreateInit = Some(create.init.0.to_vec().into());
-                trace_row.actionCreateValue = Some(u256(create.value.into()));
-                trace_row.actionCreateGas = Some(u256(create.gas.into()));
+                trace_row.action_create_from = Some(create.from.0.to_vec().into());
+                trace_row.action_create_init = Some(create.init.0.to_vec().into());
+                trace_row.action_create_value = Some(u256(create.value.into()));
+                trace_row.action_create_gas = Some(u256(create.gas.into()));
             }
             Action::Suicide(suicide) => {
-                trace_row.actionSuicideAddress = Some(suicide.address.0.to_vec().into());
-                trace_row.actionSuicideBalance = Some(u256(suicide.balance.into()));
-                trace_row.actionSuicideRefundAddress =
+                trace_row.action_suicide_address = Some(suicide.address.0.to_vec().into());
+                trace_row.action_suicide_balance = Some(u256(suicide.balance.into()));
+                trace_row.action_suicide_refund_address =
                     Some(suicide.refund_address.0.to_vec().into());
             }
             Action::Reward(reward) => {
-                trace_row.actionRewardAuthor = Some(reward.author.0.to_vec().into());
-                trace_row.actionRewardType =
+                trace_row.action_reward_author = Some(reward.author.0.to_vec().into());
+                trace_row.action_reward_type =
                     to_variant_name(&reward.reward_type).unwrap().to_string();
-                trace_row.actionRewardValue = Some(u256(reward.value.into()));
+                trace_row.action_reward_value = Some(u256(reward.value.into()));
             }
         }
 
         match &trace.result {
             Some(result) => match result {
                 Res::Call(call) => {
-                    trace_row.resultType = "call".to_owned();
-                    trace_row.resultCallGasUsed = Some(u256(call.gas_used.into()));
-                    trace_row.resultCallOutput = Some(call.output.0.to_vec().into());
+                    trace_row.result_type = "call".to_owned();
+                    trace_row.result_call_gas_used = Some(u256(call.gas_used.into()));
+                    trace_row.result_call_output = Some(call.output.0.to_vec().into());
                 }
                 Res::Create(create) => {
-                    trace_row.resultType = "create".to_owned();
-                    trace_row.resultCreateAddress = Some(create.address.0.to_vec().into());
-                    trace_row.resultCreateCode = Some(create.code.0.to_vec().into());
-                    trace_row.resultCreateGasUsed = Some(u256(create.gas_used.into()))
+                    trace_row.result_type = "create".to_owned();
+                    trace_row.result_create_address = Some(create.address.0.to_vec().into());
+                    trace_row.result_create_code = Some(create.code.0.to_vec().into());
+                    trace_row.result_create_gas_used = Some(u256(create.gas_used.into()))
                 }
                 Res::None => {
                     // trace_row.resultType =
