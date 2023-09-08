@@ -135,9 +135,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
                     let rpc = bitcoincore_rpc::Client::new(
                         format!(
-                            "{}://{}",
+                            "{}://{}:{}",
                             bitcoin_rpc_url.scheme(),
-                            bitcoin_rpc_url.host_str().unwrap(),
+                            bitcoin_rpc_url.host_str().unwrap_or("localhost"),
+                            bitcoin_rpc_url.port_or_known_default().unwrap_or(8332),
                         )
                         .as_str(),
                         bitcoincore_rpc::Auth::UserPass(
