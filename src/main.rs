@@ -61,6 +61,25 @@ pub enum ClapActionType {
         #[arg(long = "trace", default_value = "http://localhost:8545")]
         sync_trace: String,
     },
+    Check {
+        /// from block
+        #[arg(long, default_value_t = 0)]
+        from: u64,
+
+        /// Name of the person to greet
+        #[arg(short, long, value_enum, default_value_t = SupportedChain::Ethereum)]
+        chain: SupportedChain,
+
+        #[arg(long, default_value = "clickhouse://default@localhost:9000")]
+        db: String,
+
+        #[arg(short, long, default_value = "ws://localhost:8545")]
+        provider: String,
+
+        /// provider uri for sync trace
+        #[arg(long = "trace", default_value = "http://localhost:8545")]
+        sync_trace: String,
+    },
 }
 
 #[derive(clap::ValueEnum, Clone, PartialEq, Eq, Debug)]
@@ -198,6 +217,38 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 }
                 SupportedChain::Tron => {}
             }
+        }
+        ClapActionType::Check { from, chain, db, provider, sync_trace } =>{
+            match chain {
+                SupportedChain::Bitcoin => {}
+                SupportedChain::Ethereum => {
+                    let clickhouse_url = Url::parse(&db).unwrap();
+                    // warn!("db: {} path: {}", format!("{}:{}", clickhouse_url.host().unwrap(), clickhouse_url.port().unwrap()), clickhouse_url.path());
+
+                    let options = if clickhouse_url.path() != "/default"
+                        || clickhouse_url.username().len() > 0
+                    {
+                        ClientOptions {
+                            username: clickhouse_url.username().to_string(),
+                            password: clickhouse_url.password().unwrap_or("").to_string(),
+                            default_database: clickhouse_url.path().to_string(),
+                        }
+                    } else {
+                        ClientOptions::default()
+                    };
+
+                    clickhouse_eth::check::check(
+                        clickhouse_url.clone(),
+                        options.clone(),
+                        provider.to_owned(),
+                        sync_trace.to_owned(),
+                        from,
+                    )
+                    .await?;
+                }
+                SupportedChain::Tron => {}
+            }
+
         }
     }
     // if args.db.starts_with("clickhouse") {

@@ -147,7 +147,7 @@ struct BlockTraceCountRaw {
     count: u64,
 }
 
-async fn health_check(
+pub async fn health_check(
     client: Client,
     provider: &Provider<Ws>,
     trace_provider: &Provider<Http>,
