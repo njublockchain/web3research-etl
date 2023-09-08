@@ -131,16 +131,23 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     )
                     .await?;
 
-                    let rpc = bitcoincore_rpc::Client::new(&provider,
-                        bitcoincore_rpc::Auth::UserPass("btcd".to_string(), "pass".to_string())).unwrap();
+                    let bitcoin_rpc_url = Url::parse(&provider).unwrap();
 
-                    clickhouse_btc::init::init(
-                        clickhouse_client,
-                        rpc,
-                        from,
-                        batch,
+                    let rpc = bitcoincore_rpc::Client::new(
+                        format!(
+                            "{}://{}",
+                            bitcoin_rpc_url.scheme(),
+                            bitcoin_rpc_url.host_str().unwrap(),
+                        )
+                        .as_str(),
+                        bitcoincore_rpc::Auth::UserPass(
+                            bitcoin_rpc_url.username().to_string(),
+                            bitcoin_rpc_url.password().unwrap_or("").to_string(),
+                        ),
                     )
-                    .await?;
+                    .unwrap();
+
+                    clickhouse_btc::init::init(clickhouse_client, rpc, from, batch).await?;
                 }
                 SupportedChain::Ethereum => {
                     let clickhouse_url = Url::parse(&db).unwrap();
@@ -218,7 +225,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 SupportedChain::Tron => {}
             }
         }
-        ClapActionType::Check { from, chain, db, provider, sync_trace } =>{
+        ClapActionType::Check {
+            from,
+            chain,
+            db,
+            provider,
+            sync_trace,
+        } => {
             match chain {
                 SupportedChain::Bitcoin => {}
                 SupportedChain::Ethereum => {
@@ -248,7 +261,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 }
                 SupportedChain::Tron => {}
             }
-
         }
     }
     // if args.db.starts_with("clickhouse") {
