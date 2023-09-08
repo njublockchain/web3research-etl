@@ -39,11 +39,11 @@ pub(crate) async fn init(
             
                 `strippedSize` UInt32,
             
-                `weight` UInt32,
+                `weight` UInt64,
             
                 `prevBlockHash` FixedString(32),
             
-                `version` UInt32,
+                `version` Int32,
             
                 `merkleRoot` FixedString(32),
             
@@ -77,7 +77,7 @@ pub(crate) async fn init(
             
                 `vsize` UInt32,
             
-                `weight` UInt32,
+                `weight` UInt64,
             
                 `version` Int32,
             
@@ -89,13 +89,11 @@ pub(crate) async fn init(
             
                 `blockTime` UInt32,
             
-                `time` UInt64,
-            
                 `index` UInt32,
             
                 `prevOutputTxid` FixedString(32),
             
-                `previOutputVout` UInt32,
+                `prevOutputVout` UInt32,
             
                 `scriptSig` String,
             
@@ -128,7 +126,7 @@ pub(crate) async fn init(
             
                 `vsize` UInt32,
             
-                `weight` UInt32,
+                `weight` UInt64,
             
                 `version` Int32,
             
@@ -142,7 +140,7 @@ pub(crate) async fn init(
             
                 `index` UInt32,
             
-                `value` FixedString(32),
+                `value` UInt64,
             
                 `scriptPubkey` String,
             

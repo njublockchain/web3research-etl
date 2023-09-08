@@ -6,6 +6,7 @@ use klickhouse::{u256, Bytes, Row};
 use serde_variant::to_variant_name;
 
 #[derive(Row, Clone, Debug, Default)]
+#[klickhouse(rename_all = "camelCase")]
 pub struct BlockRow {
     pub height: u64,
     pub hash: Bytes,
@@ -83,6 +84,7 @@ pub struct InputRow {
 }
 
 #[derive(Row, Clone, Debug, Default)]
+#[klickhouse(rename_all = "camelCase")]
 pub struct VoutRow {
     pub txid: Bytes,
     pub size: u32,
