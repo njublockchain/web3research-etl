@@ -49,8 +49,7 @@ impl BlockRow {
             nonce: block.nonce.unwrap().0.to_vec().into(),
             mix_hash: block.mix_hash.unwrap().0.to_vec().into(),
             base_fee_per_gas: block
-                .base_fee_per_gas
-                .and_then(|fee| Some(u256(fee.into()))),
+                .base_fee_per_gas.map(|fee| u256(fee.into())),
             gas_limit: u256(block.gas_limit.into()),
             gas_used: u256(block.gas_used.into()),
             state_root: block.state_root.0.to_vec().into(),
@@ -58,8 +57,7 @@ impl BlockRow {
             receipts_root: block.receipts_root.0.to_vec().into(),
             logs_bloom: block.logs_bloom.unwrap().0.to_vec().into(),
             withdrawls_root: block
-                .withdrawals_root
-                .and_then(|root| Some(root.0.to_vec().into())),
+                .withdrawals_root.map(|root| root.0.to_vec().into()),
             extra_data: block.extra_data.to_vec().into(),
             timestamp: u256(block.timestamp.into()),
             size: u256(block.size.unwrap().into()),
@@ -114,41 +112,35 @@ impl TransactionRow {
             block_number: transaction.block_number.unwrap().as_u64(),
             block_timestamp: u256(block.timestamp.into()),
             transaction_index: transaction.transaction_index.unwrap().as_u64(),
-            chain_id: transaction.chain_id.and_then(|id| Some(u256(id.into()))),
-            r#type: transaction.transaction_type.and_then(|t| Some(t.as_u64())),
+            chain_id: transaction.chain_id.map(|id| u256(id.into())),
+            r#type: transaction.transaction_type.map(|t| t.as_u64()),
             from: transaction.from.0.to_vec().into(),
-            to: transaction.to.and_then(|to| Some(to.0.to_vec().into())),
+            to: transaction.to.map(|to| to.0.to_vec().into()),
             value: u256(transaction.value.into()),
             nonce: u256(transaction.nonce.into()),
             input: transaction.input.to_vec().into(),
             gas: u256(transaction.gas.into()),
             gas_price: transaction
-                .gas_price
-                .and_then(|price| Some(u256(price.into()))),
+                .gas_price.map(|price| u256(price.into())),
             max_fee_per_gas: transaction
-                .max_fee_per_gas
-                .and_then(|fee| Some(u256(fee.into()))),
+                .max_fee_per_gas.map(|fee| u256(fee.into())),
             max_priority_fee_per_gas: transaction
-                .max_priority_fee_per_gas
-                .and_then(|fee| Some(u256(fee.into()))),
+                .max_priority_fee_per_gas.map(|fee| u256(fee.into())),
             r: u256(transaction.r.into()),
             s: u256(transaction.s.into()),
             v: transaction.v.as_u64(),
             access_list: transaction
                 .access_list
-                .as_ref()
-                .and_then(|al| Some(serde_json::to_string(&al.clone().to_owned()).unwrap())),
+                .as_ref().map(|al| serde_json::to_string(&al.clone().to_owned()).unwrap()),
             contract_address: receipt
-                .contract_address
-                .and_then(|contract| Some(contract.0.to_vec().into())),
+                .contract_address.map(|contract| contract.0.to_vec().into()),
             cumulative_gas_used: u256(receipt.cumulative_gas_used.into()),
             effective_gas_price: receipt
-                .effective_gas_price
-                .and_then(|price| Some(u256(price.into()))),
+                .effective_gas_price.map(|price| u256(price.into())),
             gas_used: u256(receipt.gas_used.unwrap().into()),
             logs_bloom: receipt.logs_bloom.0.to_vec().into(),
-            root: receipt.root.and_then(|root| Some(root.0.to_vec().into())), // Only present before activation of [EIP-658]
-            status: receipt.status.and_then(|status| Some(status.as_u64())), // Only present after activation of [EIP-658]
+            root: receipt.root.map(|root| root.0.to_vec().into()), // Only present before activation of [EIP-658]
+            status: receipt.status.map(|status| status.as_u64()), // Only present after activation of [EIP-658]
         }
     }
 }
@@ -310,10 +302,9 @@ impl TraceRow {
             result_create_address: None,
             trace_address: trace.trace_address.iter().map(|t| *t as u64).collect(),
             subtraces: trace.subtraces as u64,
-            transaction_position: trace.transaction_position.and_then(|pos| Some(pos as u64)),
+            transaction_position: trace.transaction_position.map(|pos| pos as u64),
             transaction_hash: trace
-                .transaction_hash
-                .and_then(|h| Some(h.0.to_vec().into())),
+                .transaction_hash.map(|h| h.0.to_vec().into()),
             block_number: trace.block_number,
             block_timestamp: u256(block.timestamp.into()),
             block_hash: trace.block_hash.0.to_vec().into(),

@@ -2,7 +2,7 @@ mod clickhouse_btc;
 mod clickhouse_eth;
 mod clickhouse_scheme;
 mod clickhouse_tron;
-mod helpers;
+
 use clap::Parser;
 use ethers::providers::{Provider, Ws};
 use klickhouse::{Client, ClientOptions};
@@ -109,7 +109,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     // warn!("db: {} path: {}", format!("{}:{}", clickhouse_url.host().unwrap(), clickhouse_url.port().unwrap()), clickhouse_url.path());
 
                     let options = if clickhouse_url.path() != "/default"
-                        || clickhouse_url.username().len() > 0
+                        || !clickhouse_url.username().is_empty()
                     {
                         warn!("auth enabled for clickhouse");
                         ClientOptions {
@@ -155,7 +155,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     // warn!("db: {} path: {}", format!("{}:{}", clickhouse_url.host().unwrap(), clickhouse_url.port().unwrap()), clickhouse_url.path());
 
                     let options = if clickhouse_url.path() != "/default"
-                        || clickhouse_url.username().len() > 0
+                        || !clickhouse_url.username().is_empty()
                     {
                         ClientOptions {
                             username: clickhouse_url.username().to_string(),
@@ -204,7 +204,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     // warn!("db: {} path: {}", format!("{}:{}", clickhouse_url.host().unwrap(), clickhouse_url.port().unwrap()), clickhouse_url.path());
 
                     let options = if clickhouse_url.path() != "/default"
-                        || clickhouse_url.username().len() > 0
+                        || !clickhouse_url.username().is_empty()
                     {
                         ClientOptions {
                             username: clickhouse_url.username().to_string(),
@@ -240,7 +240,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     // warn!("db: {} path: {}", format!("{}:{}", clickhouse_url.host().unwrap(), clickhouse_url.port().unwrap()), clickhouse_url.path());
 
                     let options = if clickhouse_url.path() != "/default"
-                        || clickhouse_url.username().len() > 0
+                        || !clickhouse_url.username().is_empty()
                     {
                         ClientOptions {
                             username: clickhouse_url.username().to_string(),

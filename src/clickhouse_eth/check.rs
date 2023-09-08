@@ -1,6 +1,6 @@
 use std::error::Error;
 
-use ethers::providers::{Provider, Ws, Http, Middleware};
+use ethers::providers::{Provider, Ws, Middleware};
 use klickhouse::{Client, Row, ClientOptions};
 use log::{info, debug};
 use url::Url;

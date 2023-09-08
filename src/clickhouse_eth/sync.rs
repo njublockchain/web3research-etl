@@ -33,7 +33,7 @@ async fn insert_block(
 
     let (block, receipts, traces) = Retry::spawn(
         ExponentialBackoff::from_millis(100).map(jitter).take(3),
-        || get_block_details(&provider, &trace_provider, block_number),
+        || get_block_details(provider, trace_provider, block_number),
     )
     .await?;
 
@@ -114,7 +114,7 @@ async fn handle_block(
     )
     .ok();
 
-    insert_block(&client, &provider, &trace_provider, num)
+    insert_block(&client, provider, trace_provider, num)
         .await
         .unwrap();
     warn!("inserted block {}", num)
@@ -161,7 +161,7 @@ pub async fn health_check(
         .await;
     if block.is_err() {
         warn!("add missing block: {}, {:?}", num, block);
-        insert_block(&client, &provider, trace_provider, num)
+        insert_block(&client, provider, trace_provider, num)
             .await
             .unwrap();
     } else {
@@ -200,7 +200,7 @@ pub async fn health_check(
             )
             .ok(); // ignore error
 
-            insert_block(&client, &provider, trace_provider, num)
+            insert_block(&client, provider, trace_provider, num)
                 .await
                 .unwrap();
         } else {
@@ -239,7 +239,7 @@ pub async fn health_check(
                         )
                         .ok(); // ignore error
 
-                        insert_block(&client, &provider, trace_provider, num)
+                        insert_block(&client, provider, trace_provider, num)
                             .await
                             .unwrap();
                     }

@@ -2,9 +2,8 @@ use std::error::Error;
 
 use bitcoin::{hashes::Hash, Address};
 use bitcoincore_rpc::{Client, RpcApi};
-use klickhouse::{Bytes, Client as Klient};
+use klickhouse::Client as Klient;
 use log::{debug, info, warn};
-use tokio_retry::strategy::{jitter, ExponentialBackoff};
 
 use crate::clickhouse_scheme::bitcoin::{BlockRow, InputRow, VoutRow};
 
@@ -159,10 +158,6 @@ pub(crate) async fn init(
     let to = latest_height / 1000 * 1000;
     warn!("target: {}", to);
 
-    let retry_strategy = ExponentialBackoff::from_millis(100)
-        .map(jitter) // add jitter to delays
-        .take(3); // limit to 3 retries
-
     let mut block_row_list = Vec::with_capacity((batch + 1_u64) as usize);
     let mut input_row_list = Vec::new();
     let mut output_row_list = Vec::new();
@@ -193,8 +188,7 @@ pub(crate) async fn init(
         for tx in block.txdata {
             for (index, vin) in tx.input.iter().enumerate() {
                 let address = Address::from_script(&vin.script_sig, bitcoin::Network::Bitcoin)
-                    .ok()
-                    .and_then(|s| Some(s.to_string()));
+                    .ok().map(|s| s.to_string());
                 let input_row = InputRow {
                     txid: tx.txid().as_byte_array().to_vec().into(),
                     size: tx.size() as u32,
@@ -209,7 +203,7 @@ pub(crate) async fn init(
                     prev_output_txid: vin.previous_output.txid.as_byte_array().to_vec().into(),
                     prev_output_vout: vin.previous_output.vout,
                     script_sig: vin.script_sig.to_bytes().to_vec().into(),
-                    address: address,
+                    address,
                     sequence: vin.sequence.0,
                     witness: vin
                         .witness
@@ -224,8 +218,7 @@ pub(crate) async fn init(
 
             for (index, vout) in tx.output.iter().enumerate() {
                 let address = Address::from_script(&vout.script_pubkey, bitcoin::Network::Bitcoin)
-                    .ok()
-                    .and_then(|s| Some(s.to_string()));
+                    .ok().map(|s| s.to_string());
                 let output_row = VoutRow {
                     txid: tx.txid().as_byte_array().to_vec().into(),
                     size: tx.size() as u32,
@@ -239,7 +232,7 @@ pub(crate) async fn init(
                     index: index as u32,
                     value: vout.value,
                     script_pubkey: vout.script_pubkey.to_bytes().to_vec().into(),
-                    address: address,
+                    address,
                 };
 
                 output_row_list.push(output_row);

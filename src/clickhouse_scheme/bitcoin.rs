@@ -1,9 +1,5 @@
-use bitcoincore_rpc::bitcoin::{
-    block::Version, hash_types::TxMerkleNode, CompactTarget, ScriptBuf, Sequence, Witness,
-};
 // use bitcoincore_rpc::json::Address;
-use klickhouse::{u256, Bytes, Row};
-use serde_variant::to_variant_name;
+use klickhouse::{Bytes, Row};
 
 #[derive(Row, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
