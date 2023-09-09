@@ -68,8 +68,6 @@ pub struct InputRow {
     /// the referenced output's script to be accepted.
     pub script_sig: Bytes,
 
-    pub address: Option<String>,
-
     /// The sequence number, which suggests to miners which of two
     /// conflicting transactions should be preferred, or 0xFFFFFFFF
     /// to ignore this feature. This is generally never used since
@@ -81,7 +79,7 @@ pub struct InputRow {
 
 #[derive(Row, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
-pub struct VoutRow {
+pub struct OutputRow {
     pub txid: Bytes,
     pub size: u32,
     pub vsize: u32,
