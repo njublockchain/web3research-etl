@@ -68,17 +68,26 @@ async fn insert_block(
     }
 
     tokio::try_join!(
-        client.insert_native_block("INSERT INTO ethereum.blocks FORMAT native", block_row_list),
         client.insert_native_block(
-            "INSERT INTO ethereum.transactions FORMAT native",
+            "INSERT INTO arbitrumNova.blocks FORMAT native",
+            block_row_list
+        ),
+        client.insert_native_block(
+            "INSERT INTO arbitrumNova.transactions FORMAT native",
             transaction_row_list
         ),
-        client.insert_native_block("INSERT INTO ethereum.events FORMAT native", event_row_list),
         client.insert_native_block(
-            "INSERT INTO ethereum.withdraws FORMAT native",
+            "INSERT INTO arbitrumNova.events FORMAT native",
+            event_row_list
+        ),
+        client.insert_native_block(
+            "INSERT INTO arbitrumNova.withdraws FORMAT native",
             withdraw_row_list
         ),
-        client.insert_native_block("INSERT INTO ethereum.traces FORMAT native", trace_row_list)
+        client.insert_native_block(
+            "INSERT INTO arbitrumNova.traces FORMAT native",
+            trace_row_list
+        )
     )?;
 
     Ok(())
@@ -94,23 +103,23 @@ async fn handle_block(
     let num = block.number.unwrap().as_u64();
     tokio::try_join!(
         client.execute(format!(
-            "DELETE TABLE FROM ethereum.blocks WHERE number = {} ",
+            "DELETE TABLE FROM arbitrumNova.blocks WHERE number = {} ",
             num
         )),
         client.execute(format!(
-            "DELETE TABLE FROM ethereum.transactions WHERE blockNumber = {}') ",
+            "DELETE TABLE FROM arbitrumNova.transactions WHERE blockNumber = {}') ",
             num
         )),
         client.execute(format!(
-            "DELETE TABLE FROM ethereum.events WHERE blockNumber = {}') ",
+            "DELETE TABLE FROM arbitrumNova.events WHERE blockNumber = {}') ",
             num
         )),
         client.execute(format!(
-            "DELETE TABLE FROM ethereum.withdraws WHERE blockNumber = {}",
+            "DELETE TABLE FROM arbitrumNova.withdraws WHERE blockNumber = {}",
             num
         )),
         client.execute(format!(
-            "DELETE TABLE FROM ethereum.traces WHERE blockNumber = {}",
+            "DELETE TABLE FROM arbitrumNova.traces WHERE blockNumber = {}",
             num
         )),
     )
@@ -163,13 +172,13 @@ pub async fn health_check(
 ) {
     let block = client
         .query_one::<BlockHashRow>(format!(
-            "SELECT hex(hash) FROM ethereum.blocks WHERE number = {}",
+            "SELECT hex(hash) FROM arbitrumNova.blocks WHERE number = {}",
             num
         ))
         .await;
     if block.is_err() {
         warn!("add missing block: {}, {:?}", num, block);
-        insert_block(&client, provider, trace_provider, provider_type,  num)
+        insert_block(&client, provider, trace_provider, provider_type, num)
             .await
             .unwrap();
     } else {
@@ -186,23 +195,23 @@ pub async fn health_check(
             );
             tokio::try_join!(
                 client.execute(format!(
-                    "DELETE TABLE FROM ethereum.blocks WHERE number = {} ",
+                    "DELETE TABLE FROM arbitrumNova.blocks WHERE number = {} ",
                     num
                 )),
                 client.execute(format!(
-                    "DELETE TABLE FROM ethereum.transactions WHERE blockNumber = {}') ",
+                    "DELETE TABLE FROM arbitrumNova.transactions WHERE blockNumber = {}') ",
                     num
                 )),
                 client.execute(format!(
-                    "DELETE TABLE FROM ethereum.events WHERE blockNumber = {}') ",
+                    "DELETE TABLE FROM arbitrumNova.events WHERE blockNumber = {}') ",
                     num
                 )),
                 client.execute(format!(
-                    "DELETE TABLE FROM ethereum.withdraws WHERE blockNumber = {}",
+                    "DELETE TABLE FROM arbitrumNova.withdraws WHERE blockNumber = {}",
                     num
                 )),
                 client.execute(format!(
-                    "DELETE TABLE FROM ethereum.traces WHERE blockNumber = {}",
+                    "DELETE TABLE FROM arbitrumNova.traces WHERE blockNumber = {}",
                     num
                 ))
             )
@@ -215,7 +224,7 @@ pub async fn health_check(
             // check traces
             let block_trace_count = client
                 .query_one::<BlockTraceCountRaw>(format!(
-                    "SELECT count(*) as count FROM ethereum.traces WHERE blockNumber = {}",
+                    "SELECT count(*) as count FROM arbitrumNova.traces WHERE blockNumber = {}",
                     num
                 ))
                 .await;
@@ -225,23 +234,23 @@ pub async fn health_check(
                         warn!("fix err block {}: no traces", num);
                         tokio::try_join!(
                             client.execute(format!(
-                                "DELETE TABLE FROM ethereum.blocks WHERE number = {} ",
+                                "DELETE TABLE FROM arbitrumNova.blocks WHERE number = {} ",
                                 num
                             )),
                             client.execute(format!(
-                                "DELETE TABLE FROM ethereum.transactions WHERE blockNumber = {}') ",
+                                "DELETE TABLE FROM arbitrumNova.transactions WHERE blockNumber = {}') ",
                                 num
                             )),
                             client.execute(format!(
-                                "DELETE TABLE FROM ethereum.events WHERE blockNumber = {}') ",
+                                "DELETE TABLE FROM arbitrumNova.events WHERE blockNumber = {}') ",
                                 num
                             )),
                             client.execute(format!(
-                                "DELETE TABLE FROM ethereum.withdraws WHERE blockNumber = {}",
+                                "DELETE TABLE FROM arbitrumNova.withdraws WHERE blockNumber = {}",
                                 num
                             )),
                             client.execute(format!(
-                                "DELETE TABLE FROM ethereum.traces WHERE blockNumber = {}",
+                                "DELETE TABLE FROM arbitrumNova.traces WHERE blockNumber = {}",
                                 num
                             ))
                         )
@@ -273,7 +282,7 @@ async fn interval_health_check(
 
     debug!("start interval update");
     let local_height = client
-        .query_one::<MaxNumberRow>("SELECT max(number) as max FROM ethereum.blocks")
+        .query_one::<MaxNumberRow>("SELECT max(number) as max FROM arbitrumNova.blocks")
         .await?;
     info!("local height {}", local_height.max);
     let latest: u64 = provider.get_block_number().await?.as_u64();
@@ -348,7 +357,7 @@ pub(crate) async fn sync(
         let provider_for_health = Provider::<Ws>::connect(&provider_ws).await?;
         let trace_provider_for_health = provider_http
             .clone()
-            .map(|provider_http| Provider::try_from(&provider_http).unwrap());
+            .map(|trace_provider_uri| Provider::try_from(&trace_provider_uri).unwrap());
 
         interval_health_check(
             clickhouse_client_for_health,

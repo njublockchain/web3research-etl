@@ -123,7 +123,7 @@ pub(crate) async fn init(
     klient
         .execute(
             "
-        CREATE DATABASE IF NOT EXISTS ethereum;
+        CREATE DATABASE IF NOT EXISTS arbitrumNova;
         ",
         )
         .await
@@ -131,7 +131,7 @@ pub(crate) async fn init(
     klient
         .execute(
             "
-        CREATE TABLE IF NOT EXISTS ethereum.blocks (
+        CREATE TABLE IF NOT EXISTS arbitrumNova.blocks (
             hash             FixedString(32),
             number           UInt64,
             parentHash       FixedString(32),
@@ -160,7 +160,7 @@ pub(crate) async fn init(
         .await
         .unwrap();
     klient.execute("
-        CREATE TABLE IF NOT EXISTS ethereum.transactions (
+        CREATE TABLE IF NOT EXISTS arbitrumNova.transactions (
             hash             FixedString(32),
             blockHash        FixedString(32),
             blockNumber      UInt64,
@@ -194,7 +194,7 @@ pub(crate) async fn init(
     klient
         .execute(
             "
-        CREATE TABLE IF NOT EXISTS ethereum.events (
+        CREATE TABLE IF NOT EXISTS arbitrumNova.events (
             address FixedString(20),
             blockHash FixedString(32),
             blockNumber UInt64,
@@ -214,7 +214,7 @@ pub(crate) async fn init(
     klient
         .execute(
             "
-        CREATE TABLE IF NOT EXISTS ethereum.withdraws (
+        CREATE TABLE IF NOT EXISTS arbitrumNova.withdraws (
             blockHash String,
             blockNumber UInt64,
             blockTimestamp UInt256,
@@ -231,7 +231,7 @@ pub(crate) async fn init(
     klient
         .execute(
             "
-            CREATE TABLE IF NOT EXISTS ethereum.traces
+            CREATE TABLE IF NOT EXISTS arbitrumNova.traces
             (
                 `blockPos`    UInt64,
                 `blockNumber` UInt64,
@@ -357,23 +357,23 @@ pub(crate) async fn init(
         if (num - from + 1) % batch == 0 {
             tokio::try_join!(
                 klient.insert_native_block(
-                    "INSERT INTO ethereum.blocks FORMAT native",
+                    "INSERT INTO arbitrumNova.blocks FORMAT native",
                     block_row_list.to_vec()
                 ),
                 klient.insert_native_block(
-                    "INSERT INTO ethereum.transactions FORMAT native",
+                    "INSERT INTO arbitrumNova.transactions FORMAT native",
                     transaction_row_list.to_vec()
                 ),
                 klient.insert_native_block(
-                    "INSERT INTO ethereum.events FORMAT native",
+                    "INSERT INTO arbitrumNova.events FORMAT native",
                     event_row_list.to_vec()
                 ),
                 klient.insert_native_block(
-                    "INSERT INTO ethereum.withdraws FORMAT native",
+                    "INSERT INTO arbitrumNova.withdraws FORMAT native",
                     withdraw_row_list.to_vec()
                 ),
                 klient.insert_native_block(
-                    "INSERT INTO ethereum.traces FORMAT native",
+                    "INSERT INTO arbitrumNova.traces FORMAT native",
                     trace_row_list.to_vec()
                 )
             )
@@ -389,23 +389,23 @@ pub(crate) async fn init(
 
         tokio::try_join!(
             klient.insert_native_block(
-                "INSERT INTO ethereum.blocks FORMAT native",
+                "INSERT INTO arbitrumNova.blocks FORMAT native",
                 block_row_list.to_vec()
             ),
             klient.insert_native_block(
-                "INSERT INTO ethereum.transactions FORMAT native",
+                "INSERT INTO arbitrumNova.transactions FORMAT native",
                 transaction_row_list.to_vec()
             ),
             klient.insert_native_block(
-                "INSERT INTO ethereum.events FORMAT native",
+                "INSERT INTO arbitrumNova.events FORMAT native",
                 event_row_list.to_vec()
             ),
             klient.insert_native_block(
-                "INSERT INTO ethereum.withdraws FORMAT native",
+                "INSERT INTO arbitrumNova.withdraws FORMAT native",
                 withdraw_row_list.to_vec()
             ),
             klient.insert_native_block(
-                "INSERT INTO ethereum.traces FORMAT native",
+                "INSERT INTO arbitrumNova.traces FORMAT native",
                 trace_row_list.to_vec()
             )
         )

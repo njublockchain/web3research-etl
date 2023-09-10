@@ -12,9 +12,9 @@ use tokio_retry::{
 };
 use url::Url;
 
-use crate::{clickhouse_scheme::ethereum::{
+use crate::clickhouse_scheme::ethereum::{
     BlockRow, EventRow, TraceRow, TransactionRow, WithdrawalRow,
-}, ProviderType};
+};
 
 use super::init::get_block_details;
 
@@ -22,7 +22,6 @@ async fn insert_block(
     client: &Client,
     provider: &Provider<Ws>,
     trace_provider: &Option<Provider<Http>>,
-    provider_type: ProviderType,
     block_number: u64,
 ) -> Result<(), Box<dyn Error>> {
     let mut block_row_list = Vec::with_capacity((1_u64) as usize);
@@ -34,9 +33,11 @@ async fn insert_block(
 
     let (block, receipts, traces) = Retry::spawn(
         ExponentialBackoff::from_millis(100).map(jitter).take(3),
-        || get_block_details(provider, trace_provider, provider_type==ProviderType::Erigon, block_number),
+        || get_block_details(provider, trace_provider, false, block_number),
     )
     .await?;
+
+    let block = &block;
 
     let block_row = BlockRow::from_ethers(&block);
     block_row_list.push(block_row);
@@ -68,17 +69,26 @@ async fn insert_block(
     }
 
     tokio::try_join!(
-        client.insert_native_block("INSERT INTO ethereum.blocks FORMAT native", block_row_list),
         client.insert_native_block(
-            "INSERT INTO ethereum.transactions FORMAT native",
+            "INSERT INTO arbitrumOne.blocks FORMAT native",
+            block_row_list
+        ),
+        client.insert_native_block(
+            "INSERT INTO arbitrumOne.transactions FORMAT native",
             transaction_row_list
         ),
-        client.insert_native_block("INSERT INTO ethereum.events FORMAT native", event_row_list),
         client.insert_native_block(
-            "INSERT INTO ethereum.withdraws FORMAT native",
+            "INSERT INTO arbitrumOne.events FORMAT native",
+            event_row_list
+        ),
+        client.insert_native_block(
+            "INSERT INTO arbitrumOne.withdraws FORMAT native",
             withdraw_row_list
         ),
-        client.insert_native_block("INSERT INTO ethereum.traces FORMAT native", trace_row_list)
+        client.insert_native_block(
+            "INSERT INTO arbitrumOne.traces FORMAT native",
+            trace_row_list
+        )
     )?;
 
     Ok(())
@@ -88,35 +98,34 @@ async fn handle_block(
     client: Client,
     provider: &Provider<Ws>,
     trace_provider: &Option<Provider<Http>>,
-    provider_type: ProviderType,
     block: Block<H256>,
 ) {
     let num = block.number.unwrap().as_u64();
     tokio::try_join!(
         client.execute(format!(
-            "DELETE TABLE FROM ethereum.blocks WHERE number = {} ",
+            "DELETE TABLE FROM arbitrumOne.blocks WHERE number = {} ",
             num
         )),
         client.execute(format!(
-            "DELETE TABLE FROM ethereum.transactions WHERE blockNumber = {}') ",
+            "DELETE TABLE FROM arbitrumOne.transactions WHERE blockNumber = {}') ",
             num
         )),
         client.execute(format!(
-            "DELETE TABLE FROM ethereum.events WHERE blockNumber = {}') ",
+            "DELETE TABLE FROM arbitrumOne.events WHERE blockNumber = {}') ",
             num
         )),
         client.execute(format!(
-            "DELETE TABLE FROM ethereum.withdraws WHERE blockNumber = {}",
+            "DELETE TABLE FROM arbitrumOne.withdraws WHERE blockNumber = {}",
             num
         )),
         client.execute(format!(
-            "DELETE TABLE FROM ethereum.traces WHERE blockNumber = {}",
+            "DELETE TABLE FROM arbitrumOne.traces WHERE blockNumber = {}",
             num
         )),
     )
     .ok();
 
-    insert_block(&client, provider, trace_provider, provider_type, num)
+    insert_block(&client, provider, trace_provider, num)
         .await
         .unwrap();
     warn!("inserted block {}", num)
@@ -126,7 +135,6 @@ async fn listen_updates(
     client: Client,
     provider: Provider<Ws>,
     trace_provider: Option<Provider<Http>>,
-    provider_type: ProviderType,
 ) {
     // if in db, update it
     // https://clickhouse.com/docs/en/guides/developer/deduplication
@@ -140,7 +148,7 @@ async fn listen_updates(
             block.hash.unwrap(),
             block.number.unwrap()
         );
-        handle_block(client.clone(), &provider, &trace_provider, provider_type, block).await;
+        handle_block(client.clone(), &provider, &trace_provider, block).await;
     }
 }
 
@@ -158,18 +166,17 @@ pub async fn health_check(
     client: Client,
     provider: &Provider<Ws>,
     trace_provider: &Option<Provider<Http>>,
-    provider_type: ProviderType,
     num: u64,
 ) {
     let block = client
         .query_one::<BlockHashRow>(format!(
-            "SELECT hex(hash) FROM ethereum.blocks WHERE number = {}",
+            "SELECT hex(hash) FROM arbitrumOne.blocks WHERE number = {}",
             num
         ))
         .await;
     if block.is_err() {
         warn!("add missing block: {}, {:?}", num, block);
-        insert_block(&client, provider, trace_provider, provider_type,  num)
+        insert_block(&client, provider, trace_provider, num)
             .await
             .unwrap();
     } else {
@@ -186,36 +193,36 @@ pub async fn health_check(
             );
             tokio::try_join!(
                 client.execute(format!(
-                    "DELETE TABLE FROM ethereum.blocks WHERE number = {} ",
+                    "DELETE TABLE FROM arbitrumOne.blocks WHERE number = {} ",
                     num
                 )),
                 client.execute(format!(
-                    "DELETE TABLE FROM ethereum.transactions WHERE blockNumber = {}') ",
+                    "DELETE TABLE FROM arbitrumOne.transactions WHERE blockNumber = {}') ",
                     num
                 )),
                 client.execute(format!(
-                    "DELETE TABLE FROM ethereum.events WHERE blockNumber = {}') ",
+                    "DELETE TABLE FROM arbitrumOne.events WHERE blockNumber = {}') ",
                     num
                 )),
                 client.execute(format!(
-                    "DELETE TABLE FROM ethereum.withdraws WHERE blockNumber = {}",
+                    "DELETE TABLE FROM arbitrumOne.withdraws WHERE blockNumber = {}",
                     num
                 )),
                 client.execute(format!(
-                    "DELETE TABLE FROM ethereum.traces WHERE blockNumber = {}",
+                    "DELETE TABLE FROM arbitrumOne.traces WHERE blockNumber = {}",
                     num
                 ))
             )
             .ok(); // ignore error
 
-            insert_block(&client, provider, trace_provider, provider_type, num)
+            insert_block(&client, provider, trace_provider, num)
                 .await
                 .unwrap();
         } else {
             // check traces
             let block_trace_count = client
                 .query_one::<BlockTraceCountRaw>(format!(
-                    "SELECT count(*) as count FROM ethereum.traces WHERE blockNumber = {}",
+                    "SELECT count(*) as count FROM arbitrumOne.traces WHERE blockNumber = {}",
                     num
                 ))
                 .await;
@@ -225,29 +232,29 @@ pub async fn health_check(
                         warn!("fix err block {}: no traces", num);
                         tokio::try_join!(
                             client.execute(format!(
-                                "DELETE TABLE FROM ethereum.blocks WHERE number = {} ",
+                                "DELETE TABLE FROM arbitrumOne.blocks WHERE number = {} ",
                                 num
                             )),
                             client.execute(format!(
-                                "DELETE TABLE FROM ethereum.transactions WHERE blockNumber = {}') ",
+                                "DELETE TABLE FROM arbitrumOne.transactions WHERE blockNumber = {}') ",
                                 num
                             )),
                             client.execute(format!(
-                                "DELETE TABLE FROM ethereum.events WHERE blockNumber = {}') ",
+                                "DELETE TABLE FROM arbitrumOne.events WHERE blockNumber = {}') ",
                                 num
                             )),
                             client.execute(format!(
-                                "DELETE TABLE FROM ethereum.withdraws WHERE blockNumber = {}",
+                                "DELETE TABLE FROM arbitrumOne.withdraws WHERE blockNumber = {}",
                                 num
                             )),
                             client.execute(format!(
-                                "DELETE TABLE FROM ethereum.traces WHERE blockNumber = {}",
+                                "DELETE TABLE FROM arbitrumOne.traces WHERE blockNumber = {}",
                                 num
                             ))
                         )
                         .ok(); // ignore error
 
-                        insert_block(&client, provider, trace_provider, provider_type, num)
+                        insert_block(&client, provider, trace_provider, num)
                             .await
                             .unwrap();
                     }
@@ -264,7 +271,6 @@ async fn interval_health_check(
     client: Client,
     provider: &Provider<Ws>,
     trace_provider: &Option<Provider<Http>>,
-    provider_type: ProviderType,
 ) -> Result<(), Box<dyn Error>> {
     #[derive(Row, Clone, Debug)]
     struct MaxNumberRow {
@@ -273,7 +279,7 @@ async fn interval_health_check(
 
     debug!("start interval update");
     let local_height = client
-        .query_one::<MaxNumberRow>("SELECT max(number) as max FROM ethereum.blocks")
+        .query_one::<MaxNumberRow>("SELECT max(number) as max FROM arbitrumOne.blocks")
         .await?;
     info!("local height {}", local_height.max);
     let latest: u64 = provider.get_block_number().await?.as_u64();
@@ -282,7 +288,7 @@ async fn interval_health_check(
     let from = latest - 100_000;
 
     for num in (from..=latest).rev() {
-        health_check(client.clone(), provider, trace_provider, provider_type, num).await;
+        health_check(client.clone(), provider, trace_provider, num).await;
     }
 
     Ok(())
@@ -292,7 +298,6 @@ pub(crate) async fn sync(
     db: String,
     provider_ws: String,
     provider_http: Option<String>,
-    provider_type: ProviderType,
 ) -> Result<(), Box<dyn Error>> {
     let clickhouse_url = Url::parse(&db).unwrap();
     // warn!("db: {} path: {}", format!("{}:{}", clickhouse_url.host().unwrap(), clickhouse_url.port().unwrap()), clickhouse_url.path());
@@ -329,7 +334,6 @@ pub(crate) async fn sync(
         clickhouse_client_for_listen,
         provider_for_listen,
         trace_provider_for_listen,
-        provider_type,
     ));
 
     let mut interval = tokio::time::interval(Duration::from_secs(60 * 60 * 4));
@@ -348,13 +352,12 @@ pub(crate) async fn sync(
         let provider_for_health = Provider::<Ws>::connect(&provider_ws).await?;
         let trace_provider_for_health = provider_http
             .clone()
-            .map(|provider_http| Provider::try_from(&provider_http).unwrap());
+            .map(|trace_provider_uri| Provider::try_from(&trace_provider_uri).unwrap());
 
         interval_health_check(
             clickhouse_client_for_health,
             &provider_for_health,
             &trace_provider_for_health,
-            provider_type,
         )
         .await?;
     }

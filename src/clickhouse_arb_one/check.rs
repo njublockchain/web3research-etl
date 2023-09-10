@@ -51,7 +51,7 @@ pub(crate) async fn check(
 
     debug!("start interval update");
     let local_height = client
-        .query_one::<MaxNumberRow>("SELECT max(number) as max FROM ethereum.blocks")
+        .query_one::<MaxNumberRow>("SELECT max(number) as max FROM arbitrumOne.blocks")
         .await?;
     info!("local height {}", local_height.max);
     let latest: u64 = provider.get_block_number().await?.as_u64();

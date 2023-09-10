@@ -2,17 +2,61 @@ use std::error::Error;
 
 use bitcoin::{hashes::Hash, Address};
 use bitcoincore_rpc::{Client, RpcApi};
-use klickhouse::Client as Klient;
 use log::{debug, info, warn};
+use url::Url;
 
-use crate::clickhouse_scheme::bitcoin::{BlockRow, InputRow, OutputRow};
+use crate::{clickhouse_scheme::bitcoin::{BlockRow, InputRow, OutputRow}, ProviderType};
 
 pub(crate) async fn init(
-    klient: Klient,
-    client: Client,
+    db: String,
+    provider: String,
+    provider_type: ProviderType,
     from: u64,
     batch: u64,
 ) -> Result<(), Box<dyn Error>> {
+    let clickhouse_url = Url::parse(&db).unwrap();
+    // warn!("db: {} path: {}", format!("{}:{}", clickhouse_url.host().unwrap(), clickhouse_url.port().unwrap()), clickhouse_url.path());
+
+    let options = if clickhouse_url.path() != "/default"
+        || !clickhouse_url.username().is_empty()
+    {
+        warn!("auth enabled for clickhouse");
+        klickhouse::ClientOptions {
+            username: clickhouse_url.username().to_string(),
+            password: clickhouse_url.password().unwrap_or("").to_string(),
+            default_database: clickhouse_url.path().to_string(),
+        }
+    } else {
+        klickhouse::ClientOptions::default()
+    };
+
+    let klient = klickhouse::Client::connect(
+        format!(
+            "{}:{}",
+            clickhouse_url.host().unwrap(),
+            clickhouse_url.port().unwrap()
+        ),
+        options.clone(),
+    )
+    .await?;
+
+    let bitcoin_rpc_url = Url::parse(&provider).unwrap();
+
+    let client = bitcoincore_rpc::Client::new(
+        format!(
+            "{}://{}:{}",
+            bitcoin_rpc_url.scheme(),
+            bitcoin_rpc_url.host_str().unwrap_or("localhost"),
+            bitcoin_rpc_url.port_or_known_default().unwrap_or(8332),
+        )
+        .as_str(),
+        bitcoincore_rpc::Auth::UserPass(
+            bitcoin_rpc_url.username().to_string(),
+            bitcoin_rpc_url.password().unwrap_or("").to_string(),
+        ),
+    )
+    .unwrap();
+
     debug!("start initializing schema");
     klient
         .execute(

@@ -1,14 +1,12 @@
+mod clickhouse_arb_nova;
+mod clickhouse_arb_one;
 mod clickhouse_btc;
 mod clickhouse_eth;
 mod clickhouse_scheme;
 mod clickhouse_tron;
 
 use clap::Parser;
-use ethers::providers::{Provider, Ws};
-use klickhouse::{Client, ClientOptions};
-use log::warn;
 use std::error::Error;
-use url::Url;
 
 extern crate pretty_env_logger;
 
@@ -34,13 +32,16 @@ pub enum ClapActionType {
         #[arg(short, long, default_value = "ws://localhost:8545")]
         provider: String,
 
+        /// provider uri for init trace, can be null when blockchain not requiring trace data
+        #[arg(long = "trace", default_value = None)]
+        trace_provider: Option<String>,
+
+        #[arg(long, value_enum, default_value_t = ProviderType::Default )]
+        provider_type: ProviderType,
+
         /// from block
         #[arg(long, default_value_t = 0)]
         from: u64,
-
-        /// provider uri for init trace
-        #[arg(long = "trace", default_value = "http://localhost:8545")]
-        init_trace: String,
 
         /// init batch size
         #[arg(long, default_value_t = 1u64)]
@@ -58,8 +59,11 @@ pub enum ClapActionType {
         provider: String,
 
         /// provider uri for sync trace
-        #[arg(long = "trace", default_value = "http://localhost:8545")]
-        sync_trace: String,
+        #[arg(long = "trace", default_value = None)]
+        trace_provider: Option<String>,
+
+        #[arg(long, value_enum, default_value_t = ProviderType::Default )]
+        provider_type: ProviderType,
     },
     Check {
         /// from block
@@ -77,8 +81,11 @@ pub enum ClapActionType {
         provider: String,
 
         /// provider uri for sync trace
-        #[arg(long = "trace", default_value = "http://localhost:8545")]
-        sync_trace: String,
+        #[arg(long = "trace", default_value = None)]
+        trace_provider: Option<String>,
+
+        #[arg(long, value_enum, default_value_t = ProviderType::Default )]
+        provider_type: ProviderType,
     },
 }
 
@@ -87,6 +94,14 @@ pub enum SupportedChain {
     Ethereum,
     Bitcoin,
     Tron,
+    ArbitrumOne,
+    ArbitrumNova,
+}
+
+#[derive(clap::ValueEnum, Copy, Clone, PartialEq, Eq, Debug)]
+pub enum ProviderType {
+    Default,
+    Erigon,
 }
 
 #[tokio::main(flavor = "multi_thread")]
@@ -100,169 +115,72 @@ async fn main() -> Result<(), Box<dyn Error>> {
             db,
             provider,
             from,
-            init_trace,
+            trace_provider,
             batch,
-        } => {
-            match chain {
-                SupportedChain::Bitcoin => {
-                    let clickhouse_url = Url::parse(&db).unwrap();
-                    // warn!("db: {} path: {}", format!("{}:{}", clickhouse_url.host().unwrap(), clickhouse_url.port().unwrap()), clickhouse_url.path());
-
-                    let options = if clickhouse_url.path() != "/default"
-                        || !clickhouse_url.username().is_empty()
-                    {
-                        warn!("auth enabled for clickhouse");
-                        ClientOptions {
-                            username: clickhouse_url.username().to_string(),
-                            password: clickhouse_url.password().unwrap_or("").to_string(),
-                            default_database: clickhouse_url.path().to_string(),
-                        }
-                    } else {
-                        ClientOptions::default()
-                    };
-
-                    let clickhouse_client = Client::connect(
-                        format!(
-                            "{}:{}",
-                            clickhouse_url.host().unwrap(),
-                            clickhouse_url.port().unwrap()
-                        ),
-                        options.clone(),
-                    )
-                    .await?;
-
-                    let bitcoin_rpc_url = Url::parse(&provider).unwrap();
-
-                    let rpc = bitcoincore_rpc::Client::new(
-                        format!(
-                            "{}://{}:{}",
-                            bitcoin_rpc_url.scheme(),
-                            bitcoin_rpc_url.host_str().unwrap_or("localhost"),
-                            bitcoin_rpc_url.port_or_known_default().unwrap_or(8332),
-                        )
-                        .as_str(),
-                        bitcoincore_rpc::Auth::UserPass(
-                            bitcoin_rpc_url.username().to_string(),
-                            bitcoin_rpc_url.password().unwrap_or("").to_string(),
-                        ),
-                    )
-                    .unwrap();
-
-                    clickhouse_btc::init::init(clickhouse_client, rpc, from, batch).await?;
-                }
-                SupportedChain::Ethereum => {
-                    let clickhouse_url = Url::parse(&db).unwrap();
-                    // warn!("db: {} path: {}", format!("{}:{}", clickhouse_url.host().unwrap(), clickhouse_url.port().unwrap()), clickhouse_url.path());
-
-                    let options = if clickhouse_url.path() != "/default"
-                        || !clickhouse_url.username().is_empty()
-                    {
-                        ClientOptions {
-                            username: clickhouse_url.username().to_string(),
-                            password: clickhouse_url.password().unwrap_or("").to_string(),
-                            default_database: clickhouse_url.path().to_string(),
-                        }
-                    } else {
-                        ClientOptions::default()
-                    };
-
-                    let clickhouse_client = Client::connect(
-                        format!(
-                            "{}:{}",
-                            clickhouse_url.host().unwrap(),
-                            clickhouse_url.port().unwrap()
-                        ),
-                        options.clone(),
-                    )
-                    .await?;
-
-                    let provider_ws = Provider::<Ws>::connect(provider).await?;
-                    let trace_provider = Provider::try_from(init_trace)?;
-
-                    clickhouse_eth::init::init(
-                        clickhouse_client,
-                        provider_ws,
-                        from,
-                        trace_provider,
-                        batch,
-                    )
-                    .await?;
-                }
-                SupportedChain::Tron => {}
+            provider_type,
+        } => match chain {
+            SupportedChain::Bitcoin => {
+                clickhouse_btc::init::init(db, provider, provider_type, from, batch).await?
             }
-        }
+            SupportedChain::Ethereum => {
+                clickhouse_eth::init::init(db, provider, trace_provider, provider_type, from, batch)
+                    .await?
+            }
+            SupportedChain::Tron => {}
+            SupportedChain::ArbitrumOne => {
+                clickhouse_arb_one::init::init(
+                    db,
+                    provider,
+                    trace_provider,
+                    provider_type,
+                    from,
+                    batch,
+                )
+                .await?
+            }
+            SupportedChain::ArbitrumNova => {
+                clickhouse_arb_nova::init::init(
+                    db,
+                    provider,
+                    trace_provider,
+                    provider_type,
+                    from,
+                    batch,
+                )
+                .await?
+            }
+        },
         ClapActionType::Sync {
             chain,
             db,
             provider,
-            sync_trace,
-        } => {
-            match chain {
-                SupportedChain::Bitcoin => {}
-                SupportedChain::Ethereum => {
-                    let clickhouse_url = Url::parse(&db).unwrap();
-                    // warn!("db: {} path: {}", format!("{}:{}", clickhouse_url.host().unwrap(), clickhouse_url.port().unwrap()), clickhouse_url.path());
-
-                    let options = if clickhouse_url.path() != "/default"
-                        || !clickhouse_url.username().is_empty()
-                    {
-                        ClientOptions {
-                            username: clickhouse_url.username().to_string(),
-                            password: clickhouse_url.password().unwrap_or("").to_string(),
-                            default_database: clickhouse_url.path().to_string(),
-                        }
-                    } else {
-                        ClientOptions::default()
-                    };
-
-                    clickhouse_eth::sync::sync(
-                        clickhouse_url.clone(),
-                        options.clone(),
-                        provider.to_owned(),
-                        sync_trace.to_owned(),
-                    )
-                    .await?;
-                }
-                SupportedChain::Tron => {}
+            trace_provider,
+            provider_type,
+        } => match chain {
+            SupportedChain::Bitcoin => {}
+            SupportedChain::Ethereum => {
+                clickhouse_eth::sync::sync(db, provider, trace_provider, provider_type).await?
             }
-        }
+            SupportedChain::Tron => {}
+            SupportedChain::ArbitrumOne => todo!(),
+            SupportedChain::ArbitrumNova => todo!(),
+        },
         ClapActionType::Check {
             from,
             chain,
             db,
             provider,
-            sync_trace,
-        } => {
-            match chain {
-                SupportedChain::Bitcoin => {}
-                SupportedChain::Ethereum => {
-                    let clickhouse_url = Url::parse(&db).unwrap();
-                    // warn!("db: {} path: {}", format!("{}:{}", clickhouse_url.host().unwrap(), clickhouse_url.port().unwrap()), clickhouse_url.path());
-
-                    let options = if clickhouse_url.path() != "/default"
-                        || !clickhouse_url.username().is_empty()
-                    {
-                        ClientOptions {
-                            username: clickhouse_url.username().to_string(),
-                            password: clickhouse_url.password().unwrap_or("").to_string(),
-                            default_database: clickhouse_url.path().to_string(),
-                        }
-                    } else {
-                        ClientOptions::default()
-                    };
-
-                    clickhouse_eth::check::check(
-                        clickhouse_url.clone(),
-                        options.clone(),
-                        provider.to_owned(),
-                        sync_trace.to_owned(),
-                        from,
-                    )
-                    .await?;
-                }
-                SupportedChain::Tron => {}
+            trace_provider,
+            provider_type,
+        } => match chain {
+            SupportedChain::Bitcoin => {}
+            SupportedChain::Ethereum => {
+                clickhouse_eth::check::check(db, provider, trace_provider, provider_type, from).await?;
             }
-        }
+            SupportedChain::Tron => {}
+            SupportedChain::ArbitrumOne => {}
+            SupportedChain::ArbitrumNova => {}
+        },
     }
     // if args.db.starts_with("clickhouse") {
     //     clickhouse_eth::main(&args.db, &args.provider, &args.action_type).await?;
