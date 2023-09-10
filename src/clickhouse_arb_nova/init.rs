@@ -12,7 +12,7 @@ use tokio_retry::{
 use url::Url;
 
 use crate::{
-    clickhouse_scheme::ethereum::{BlockRow, EventRow, TraceRow, TransactionRow, WithdrawalRow},
+    clickhouse_scheme::arbitrum::{BlockRow, EventRow, TraceRow, TransactionRow, WithdrawalRow},
     ProviderType,
 };
 
@@ -323,33 +323,31 @@ pub(crate) async fn init(
         })
         .await?;
 
-        let block = &block;
-
-        let block_row = BlockRow::from_ethers(block);
+        let block_row = BlockRow::from_ethers(&block);
         block_row_list.push(block_row);
 
         for (transaction_index, transaction) in block.transactions.iter().enumerate() {
             let receipt = &receipts[transaction_index];
 
-            let transaction_row = TransactionRow::from_ethers(block, transaction, receipt);
+            let transaction_row = TransactionRow::from_ethers(&block, transaction, receipt);
             transaction_row_list.push(transaction_row);
 
             for log in &receipt.logs {
-                let event_row = EventRow::from_ethers(block, transaction, log);
+                let event_row = EventRow::from_ethers(&block, transaction, log);
                 event_row_list.push(event_row);
             }
         }
 
         if let Some(withdraws) = &block.withdrawals {
             for withdraw in withdraws {
-                let withdraw_row = WithdrawalRow::from_ethers(block, withdraw);
+                let withdraw_row = WithdrawalRow::from_ethers(&block, withdraw);
                 withdraw_row_list.push(withdraw_row);
             }
         }
 
         if let Some(traces) = traces {
             for (index, trace) in traces.into_iter().enumerate() {
-                let trace_row = TraceRow::from_ethers(block, &trace, index);
+                let trace_row = TraceRow::from_ethers(&block, &trace, index);
                 trace_row_list.push(trace_row);
             }
         }
