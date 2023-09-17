@@ -301,23 +301,23 @@ pub(crate) async fn init(
 
             info!("{} done blocks & txs", num)
         }
-
-        tokio::try_join!(
-            klient.insert_native_block(
-                "INSERT INTO bitcoin.blocks FORMAT native",
-                block_row_list.to_vec()
-            ),
-            klient.insert_native_block(
-                "INSERT INTO bitcoin.inputs FORMAT native",
-                input_row_list.to_vec()
-            ),
-            klient.insert_native_block(
-                "INSERT INTO bitcoin.outputs FORMAT native",
-                output_row_list.to_vec()
-            ),
-        )
-        .unwrap();
     }
+
+    tokio::try_join!(
+        klient.insert_native_block(
+            "INSERT INTO bitcoin.blocks FORMAT native",
+            block_row_list.to_vec()
+        ),
+        klient.insert_native_block(
+            "INSERT INTO bitcoin.inputs FORMAT native",
+            input_row_list.to_vec()
+        ),
+        klient.insert_native_block(
+            "INSERT INTO bitcoin.outputs FORMAT native",
+            output_row_list.to_vec()
+        ),
+    )
+    .unwrap();
 
     Ok(())
 }
