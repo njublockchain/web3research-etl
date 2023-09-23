@@ -1,5 +1,7 @@
 use ethers::{
-    types::{Action, Block, Log, Res, Trace, Transaction, TransactionReceipt, Withdrawal},
+    types::{
+        Action, Block, Log, Res, Trace, Transaction, TransactionReceipt, Withdrawal, U256, U64,
+    },
     utils::hex::FromHex,
 };
 use klickhouse::{u256, Bytes, Row};
@@ -67,10 +69,25 @@ impl BlockRow {
             timestamp: u256(block.timestamp.into()),
             size: u256(block.size.unwrap().into()),
 
-            l1_block_number: block.other.get("l1BlockNumber").unwrap().as_u64().unwrap(),
-            send_count: block.other.get("sendCount").unwrap().as_u64().unwrap(),
+            l1_block_number: U64::from_str_radix(
+                block.other.get("l1BlockNumber").unwrap().as_str().unwrap(),
+                16,
+            )
+            .unwrap()
+            .as_u64(),
+            send_count: U64::from_str_radix(
+                block.other.get("sendCount").unwrap().as_str().unwrap(),
+                16,
+            )
+            .unwrap()
+            .as_u64(),
             send_root: ethers::types::Bytes::from_hex(
-                block.other.get("sendRoot").unwrap().as_str().unwrap(),
+                block
+                    .other
+                    .get("sendRoot")
+                    .unwrap_or(&serde_json::Value::from(""))
+                    .as_str()
+                    .unwrap(),
             )
             .unwrap()
             .to_vec()
@@ -110,7 +127,7 @@ pub struct TransactionRow {
     pub root: Option<Bytes>,
     pub status: Option<u64>,
 
-    pub request_id: u64,
+    pub request_id: Option<u256>,
     pub l1_block_number: u64,
     pub gas_used_for_l1: u256,
 }
@@ -160,18 +177,24 @@ impl TransactionRow {
             root: receipt.root.map(|root| root.0.to_vec().into()), // Only present before activation of [EIP-658]
             status: receipt.status.map(|status| status.as_u64()), // Only present after activation of [EIP-658]
 
-            request_id: transaction
-                .other
-                .get("requestId")
-                .unwrap()
-                .as_u64()
-                .unwrap(),
-            l1_block_number: receipt
-                .other
-                .get("l1BlockNumber")
-                .unwrap()
-                .as_u64()
-                .unwrap(),
+            request_id: transaction.other.get("requestId").map(|r| {
+                u256(
+                    U256::from_str_radix(r.as_str().unwrap(), 16)
+                        .unwrap()
+                        .into(),
+                )
+            }),
+            l1_block_number: U64::from_str_radix(
+                receipt
+                    .other
+                    .get("l1BlockNumber")
+                    .unwrap()
+                    .as_str()
+                    .unwrap(),
+                16,
+            )
+            .unwrap()
+            .as_u64(),
             gas_used_for_l1: u256(
                 ethers::types::U256::from_str_radix(
                     receipt.other.get("gasUsedForL1").unwrap().as_str().unwrap(),

@@ -20,6 +20,8 @@ url = "^2.4.0"
 serde_variant = "^0.1.2"
 bitcoincore-rpc = "0.17.0"
 bitcoin = "0.30.1"
+tron-grpc = "0.0.2"
+tonic = "0.10.0"
 
 [dependencies.ethers]
 version = "^2.0.7"

@@ -11,9 +11,10 @@ use tokio_retry::{
 };
 use url::Url;
 
-use crate::{clickhouse_scheme::arbitrum::{
-    BlockRow, EventRow, TraceRow, TransactionRow, WithdrawalRow,
-}, ProviderType};
+use crate::{
+    clickhouse_scheme::arbitrum::{BlockRow, EventRow, TraceRow, TransactionRow, WithdrawalRow},
+    ProviderType,
+};
 
 pub async fn get_block_details(
     provider: &Provider<Ws>,
@@ -59,18 +60,17 @@ pub async fn get_block_details(
                     // set.spawn(async move {
                     println!("{:?}", tx.hash);
                     let receipt = provider
-                            .get_transaction_receipt(tx.hash)
-                            .await
-                            .unwrap_or_else(|e| {
-                                error!("{}", e);
-                                None
-                            })
-                            .unwrap();
+                        .get_transaction_receipt(tx.hash)
+                        .await
+                        .unwrap_or_else(|e| {
+                            error!("{}", e);
+                            None
+                        })
+                        .unwrap();
                     // });
 
                     receipts.push(receipt);
                 }
-
 
                 // while let Some(res) = set.join_next().await {
                 //     let receipt = res.unwrap();
@@ -152,6 +152,10 @@ pub(crate) async fn init(
             extraData        String,
             timestamp        UInt256,
             size             UInt256,
+
+            l1BlockNumber UInt64,
+            sendCount     UInt64,
+            sendRoot      String
         ) ENGINE=ReplacingMergeTree 
         ORDER BY (hash, number);
         ",
@@ -187,6 +191,10 @@ pub(crate) async fn init(
             logsBloom         String,
             root              Nullable(FixedString(32)) COMMENT 'Only present before activation of [EIP-658]',
             status            Nullable(UInt64) COMMENT 'Only present after activation of [EIP-658]'
+
+            requestId     Nullable(UInt256),
+            l1BlockNumber UInt64,
+            gasUsedForL1  UInt256
         ) ENGINE=ReplacingMergeTree
         ORDER BY hash;
         ").await.unwrap();
@@ -318,7 +326,12 @@ pub(crate) async fn init(
 
     for num in from..=to {
         let (block, receipts, traces) = Retry::spawn(retry_strategy.clone(), || {
-            get_block_details(&provider_ws, &provider_http, provider_type==ProviderType::Erigon, num)
+            get_block_details(
+                &provider_ws,
+                &provider_http,
+                provider_type == ProviderType::Erigon,
+                num,
+            )
         })
         .await?;
 
@@ -385,31 +398,31 @@ pub(crate) async fn init(
 
             info!("{} done blocks & txs", num)
         }
-
-        tokio::try_join!(
-            klient.insert_native_block(
-                "INSERT INTO arbitrumOne.blocks FORMAT native",
-                block_row_list.to_vec()
-            ),
-            klient.insert_native_block(
-                "INSERT INTO arbitrumOne.transactions FORMAT native",
-                transaction_row_list.to_vec()
-            ),
-            klient.insert_native_block(
-                "INSERT INTO arbitrumOne.events FORMAT native",
-                event_row_list.to_vec()
-            ),
-            klient.insert_native_block(
-                "INSERT INTO arbitrumOne.withdraws FORMAT native",
-                withdraw_row_list.to_vec()
-            ),
-            klient.insert_native_block(
-                "INSERT INTO arbitrumOne.traces FORMAT native",
-                trace_row_list.to_vec()
-            )
-        )
-        .unwrap();
     }
+
+    tokio::try_join!(
+        klient.insert_native_block(
+            "INSERT INTO arbitrumOne.blocks FORMAT native",
+            block_row_list.to_vec()
+        ),
+        klient.insert_native_block(
+            "INSERT INTO arbitrumOne.transactions FORMAT native",
+            transaction_row_list.to_vec()
+        ),
+        klient.insert_native_block(
+            "INSERT INTO arbitrumOne.events FORMAT native",
+            event_row_list.to_vec()
+        ),
+        klient.insert_native_block(
+            "INSERT INTO arbitrumOne.withdraws FORMAT native",
+            withdraw_row_list.to_vec()
+        ),
+        klient.insert_native_block(
+            "INSERT INTO arbitrumOne.traces FORMAT native",
+            trace_row_list.to_vec()
+        )
+    )
+    .unwrap();
 
     Ok(())
 }

@@ -126,7 +126,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 clickhouse_eth::init::init(db, provider, trace_provider, provider_type, from, batch)
                     .await?
             }
-            SupportedChain::Tron => {}
+            SupportedChain::Tron => clickhouse_tron::init::init(db, provider, from, batch).await?,
             SupportedChain::ArbitrumOne => {
                 clickhouse_arb_one::init::init(
                     db,
@@ -175,7 +175,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         } => match chain {
             SupportedChain::Bitcoin => {}
             SupportedChain::Ethereum => {
-                clickhouse_eth::check::check(db, provider, trace_provider, provider_type, from).await?;
+                clickhouse_eth::check::check(db, provider, trace_provider, provider_type, from)
+                    .await?;
             }
             SupportedChain::Tron => {}
             SupportedChain::ArbitrumOne => {}
