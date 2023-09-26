@@ -58,7 +58,6 @@ pub async fn get_block_details(
                 for tx in txs {
                     // let provider = provider.clone();
                     // set.spawn(async move {
-                    println!("{:?}", tx.hash);
                     let receipt = provider
                         .get_transaction_receipt(tx.hash)
                         .await
@@ -190,7 +189,7 @@ pub(crate) async fn init(
             gasUsed           UInt256,
             logsBloom         String,
             root              Nullable(FixedString(32)) COMMENT 'Only present before activation of [EIP-658]',
-            status            Nullable(UInt64) COMMENT 'Only present after activation of [EIP-658]'
+            status            Nullable(UInt64) COMMENT 'Only present after activation of [EIP-658]',
 
             requestId     Nullable(UInt256),
             l1BlockNumber UInt64,
