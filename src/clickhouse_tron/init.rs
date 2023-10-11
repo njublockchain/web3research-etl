@@ -397,7 +397,9 @@ pub(crate) async fn init(
 
             // }
 
-
+            // if let Ok(msg) = transaction.transaction.unwrap().raw_data.unwrap().contract[0].parameter.unwrap().to_msg::<TransferAssetContract>() {
+                
+            // }
 
             transaction_row_list.push(transaction_row);
         }

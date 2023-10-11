@@ -69,18 +69,28 @@ impl BlockRow {
             timestamp: u256(block.timestamp.into()),
             size: u256(block.size.unwrap().into()),
 
-            l1_block_number: U64::from_str_radix(
-                block.other.get("l1BlockNumber").unwrap().as_str().unwrap(),
-                16,
-            )
-            .unwrap()
-            .as_u64(),
-            send_count: U64::from_str_radix(
-                block.other.get("sendCount").unwrap().as_str().unwrap(),
-                16,
-            )
-            .unwrap()
-            .as_u64(),
+            l1_block_number: block
+                .other
+                .get("l1BlockNumber")
+                .and_then(|l1_block_number| {
+                    Some(
+                        U64::from_str_radix(l1_block_number.as_str().unwrap(), 16)
+                            .unwrap()
+                            .as_u64(),
+                    )
+                })
+                .unwrap_or(0),
+            send_count: block
+                .other
+                .get("sendCount")
+                .and_then(|send_count| {
+                    Some(
+                        U64::from_str_radix(send_count.as_str().unwrap(), 16)
+                            .unwrap()
+                            .as_u64(),
+                    )
+                })
+                .unwrap_or(0),
             send_root: ethers::types::Bytes::from_hex(
                 block
                     .other
