@@ -512,6 +512,7 @@ dependencies = [
  "iana-time-zone",
  "js-sys",
  "num-traits",
+ "serde",
  "time 0.1.45",
  "wasm-bindgen",
  "winapi",
@@ -1986,9 +1987,9 @@ dependencies = [
 
 [[package]]
 name = "klickhouse"
-version = "0.9.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cba5ec498a90378598942283158b7c4c5d7eab52732c6a704c07b920115ea8c7"
+checksum = "1903d2b1432876ed9ed982c418023ac28c5247e25e0e4387959929618aec125f"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2003,6 +2004,8 @@ dependencies = [
  "log",
  "lz4",
  "rustc_version 0.3.3",
+ "serde",
+ "serde_json",
  "thiserror",
  "tokio",
  "tokio-stream",
@@ -2011,9 +2014,9 @@ dependencies = [
 
 [[package]]
 name = "klickhouse_derive"
-version = "0.9.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bbd2c140490b02d94e092e47c4b965e851e919cb2fe9db4f5727cfe3340912ca"
+checksum = "c1ed3a57ddece97a17d5086d1e7e84f15548a86fce544f1d593eb6ea3dc1dfd3"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2026,6 +2029,7 @@ version = "0.1.0"
 dependencies = [
  "bitcoin",
  "bitcoincore-rpc",
+ "bs58",
  "clap",
  "env_logger",
  "ethers",
@@ -3844,9 +3848,9 @@ dependencies = [
 
 [[package]]
 name = "tron-grpc"
-version = "0.0.2"
+version = "0.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fdb9dc53ebb632c03a05aed541f678f8ae813694e3245a78bc21be823c5589d2"
+checksum = "24d3618dac3bca98e4ee9b333b5402816acdd31ebb3cc20ee31e1d0b8e87d0f0"
 dependencies = [
  "prost",
  "prost-build",
@@ -3978,6 +3982,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "79daa5ed5740825c40b389c5e50312b9c86df53fccd33f281df655642b43869d"
 dependencies = [
  "getrandom",
+ "serde",
 ]
 
 [[package]]

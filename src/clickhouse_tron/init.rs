@@ -3,11 +3,25 @@ use std::error::Error;
 use bitcoincore_rpc::{Client, RpcApi};
 use klickhouse::Client as Klient;
 use log::{debug, info, warn};
-use tron_grpc::{EmptyMessage, NumberMessage, TransferContract, BlockExtention};
+use tron_grpc::{
+    AccountCreateContract, BlockExtention, EmptyMessage, FreezeBalanceContract,
+    FreezeBalanceV2Contract, NumberMessage, TransferAssetContract, TransferContract,
+    TriggerSmartContract, UnfreezeBalanceContract, UnfreezeBalanceV2Contract,
+};
 use url::Url;
 
-use crate::clickhouse_scheme::tron::{
-    BlockRow, InternalTransactionRow, LogRow, MarketOrderDetailRow, TransactionRow,
+use crate::{
+    clickhouse_scheme::tron::{
+        AccountCreateContractRow, BlockRow, FreezeBalanceContractRow, FreezeBalanceV2ContractRow,
+        InternalTransactionRow, LogRow, MarketOrderDetailRow, TransactionRow,
+        TransferAssetContractRow, TransferContractRow, TriggerSmartContractRow,
+        UnfreezeBalanceContractRow, UnfreezeBalanceV2ContractRow,
+    },
+    clickhouse_tron::ddl::{
+        ACCOUNT_CREATE_CONTRACT_DDL, FREEZE_BALANCE_CONTRACT_DDL, FREEZE_BALANCE_V2_CONTRACT_DDL,
+        TRANSFER_ASSET_CONTRACT_DDL, TRANSFER_CONTRACT_DDL, TRIGGER_SMART_CONTRACT_DDL,
+        UNFREEZE_BALANCE_CONTRACT_DDL, UNFREEZE_BALANCE_V2_CONTRACT_DDL,
+    },
 };
 
 pub(crate) async fn init(
@@ -69,7 +83,7 @@ pub(crate) async fn init(
             
                 `witnessId` Int64,
             
-                `witnessAddress` FixedString(21),
+                `witnessAddress` FixedString(34),
             
                 `version` Int32,
             
@@ -105,7 +119,7 @@ pub(crate) async fn init(
             
                 `authorityAccountNames` Array(LowCardinality(String)),
             
-                `authorityAccountAddresses` Array(FixedString(21)),
+                `authorityAccountAddresses` Array(FixedString(34)),
             
                 `authorityPermissionNames` Array(LowCardinality(String)),
             
@@ -137,7 +151,7 @@ pub(crate) async fn init(
             
                 `contractResult` String,
             
-                `contractAddress` FixedString(21),
+                `contractAddress` FixedString(34),
             
                 `energyUsage` Int64,
             
@@ -201,7 +215,7 @@ pub(crate) async fn init(
             
                 `logIndex` Int32,
             
-                `address` FixedString(21),
+                `address` FixedString(34),
             
                 `topics` Array(FixedString(32)),
             
@@ -230,7 +244,7 @@ pub(crate) async fn init(
             
                 `logIndex` Int32,
             
-                `address` FixedString(21),
+                `address` FixedString(34),
             
                 `topics` Array(FixedString(32)),
             
@@ -261,9 +275,9 @@ pub(crate) async fn init(
             
                 `hash` FixedString(32),
             
-                `callerAddress` FixedString(21),
+                `callerAddress` FixedString(34),
             
-                `transferToAddress` FixedString(21),
+                `transferToAddress` FixedString(34),
             
                 `callValueInfos` Nested(tokenId String, callValue Int64),
                 
@@ -315,6 +329,21 @@ pub(crate) async fn init(
         .await
         .unwrap();
 
+    klient.execute(ACCOUNT_CREATE_CONTRACT_DDL).await.unwrap();
+    klient.execute(TRANSFER_CONTRACT_DDL).await.unwrap();
+    klient.execute(TRANSFER_ASSET_CONTRACT_DDL).await.unwrap();
+    klient.execute(FREEZE_BALANCE_CONTRACT_DDL).await.unwrap();
+    klient.execute(UNFREEZE_BALANCE_CONTRACT_DDL).await.unwrap();
+    klient.execute(TRIGGER_SMART_CONTRACT_DDL).await.unwrap();
+    klient
+        .execute(FREEZE_BALANCE_V2_CONTRACT_DDL)
+        .await
+        .unwrap();
+    klient
+        .execute(UNFREEZE_BALANCE_V2_CONTRACT_DDL)
+        .await
+        .unwrap();
+
     let mut client = tron_grpc::wallet_client::WalletClient::connect(provider).await?;
 
     let now = client.get_now_block2(EmptyMessage {}).await?;
@@ -334,6 +363,15 @@ pub(crate) async fn init(
     let mut log_row_list = Vec::new();
     let mut internal_row_list = Vec::new();
     let mut order_detail_row_list = Vec::new();
+
+    let mut account_create_contract_row_list = Vec::new();
+    let mut transfer_contract_row_list = Vec::new();
+    let mut transfer_asset_contract_row_list = Vec::new();
+    let mut freeze_balance_contract_row_list = Vec::new();
+    let mut unfreeze_balance_contract_row_list = Vec::new();
+    let mut trigger_smart_contract_row_list = Vec::new();
+    let mut freeze_balance_v2_contract_row_list = Vec::new();
+    let mut unfreeze_balance_v2_contract_row_list = Vec::new();
 
     let from = from as i64;
     let batch = batch as i64;
@@ -356,10 +394,15 @@ pub(crate) async fn init(
         for (index, transaction) in block.transactions.iter().enumerate() {
             let transaction_row = if num == 0 {
                 TransactionRow::from_grpc(&block, index as i64, transaction, None)
+            // handle genesis
             } else {
                 assert!(tx_infos[index].id == transaction.txid);
-                let transaction_row =
-                    TransactionRow::from_grpc(&block, index as i64, transaction, Some(&tx_infos[index]));
+                let transaction_row = TransactionRow::from_grpc(
+                    &block,
+                    index as i64,
+                    transaction,
+                    Some(&tx_infos[index]),
+                );
 
                 for (index, log) in tx_infos[index].log.iter().enumerate() {
                     let log_row =
@@ -393,13 +436,174 @@ pub(crate) async fn init(
                 transaction_row
             };
 
-            // if let Ok(msg) = transaction.transaction.unwrap().raw_data.unwrap().contract[0].parameter.unwrap().to_msg::<TransferContract>() {
-
-            // }
-
-            // if let Ok(msg) = transaction.transaction.unwrap().raw_data.unwrap().contract[0].parameter.unwrap().to_msg::<TransferAssetContract>() {
-                
-            // }
+            if let Ok(msg) = transaction
+                .transaction
+                .clone()
+                .unwrap()
+                .raw_data
+                .unwrap()
+                .contract[0]
+                .parameter
+                .clone()
+                .unwrap()
+                .to_msg::<AccountCreateContract>()
+            {
+                let row = AccountCreateContractRow::from_grpc(
+                    num,
+                    transaction.txid.clone(),
+                    index.try_into().unwrap(),
+                    0,
+                    msg,
+                );
+                account_create_contract_row_list.push(row);
+            }
+            if let Ok(msg) = transaction
+                .transaction
+                .clone()
+                .unwrap()
+                .raw_data
+                .unwrap()
+                .contract[0]
+                .parameter
+                .clone()
+                .unwrap()
+                .to_msg::<TransferContract>()
+            {
+                let row = TransferContractRow::from_grpc(
+                    num,
+                    transaction.txid.clone(),
+                    index.try_into().unwrap(),
+                    0,
+                    msg,
+                );
+                transfer_contract_row_list.push(row);
+            }
+            if let Ok(msg) = transaction
+                .transaction
+                .clone()
+                .unwrap()
+                .raw_data
+                .unwrap()
+                .contract[0]
+                .parameter
+                .clone()
+                .unwrap()
+                .to_msg::<TransferAssetContract>()
+            {
+                let row = TransferAssetContractRow::from_grpc(
+                    num,
+                    transaction.txid.clone(),
+                    index.try_into().unwrap(),
+                    0,
+                    msg,
+                );
+                transfer_asset_contract_row_list.push(row);
+            }
+            if let Ok(msg) = transaction
+                .transaction
+                .clone()
+                .unwrap()
+                .raw_data
+                .unwrap()
+                .contract[0]
+                .parameter
+                .clone()
+                .unwrap()
+                .to_msg::<FreezeBalanceContract>()
+            {
+                let row = FreezeBalanceContractRow::from_grpc(
+                    num,
+                    transaction.txid.clone(),
+                    index.try_into().unwrap(),
+                    0,
+                    msg,
+                );
+                freeze_balance_contract_row_list.push(row);
+            }
+            if let Ok(msg) = transaction
+                .transaction
+                .clone()
+                .unwrap()
+                .raw_data
+                .unwrap()
+                .contract[0]
+                .parameter
+                .clone()
+                .unwrap()
+                .to_msg::<UnfreezeBalanceContract>()
+            {
+                let row = UnfreezeBalanceContractRow::from_grpc(
+                    num,
+                    transaction.txid.clone(),
+                    index.try_into().unwrap(),
+                    0,
+                    msg,
+                );
+                unfreeze_balance_contract_row_list.push(row);
+            }
+            if let Ok(msg) = transaction
+                .transaction
+                .clone()
+                .unwrap()
+                .raw_data
+                .unwrap()
+                .contract[0]
+                .parameter
+                .clone()
+                .unwrap()
+                .to_msg::<TriggerSmartContract>()
+            {
+                let row = TriggerSmartContractRow::from_grpc(
+                    num,
+                    transaction.txid.clone(),
+                    index.try_into().unwrap(),
+                    0,
+                    msg,
+                );
+                trigger_smart_contract_row_list.push(row);
+            }
+            if let Ok(msg) = transaction
+                .transaction
+                .clone()
+                .unwrap()
+                .raw_data
+                .unwrap()
+                .contract[0]
+                .parameter
+                .clone()
+                .unwrap()
+                .to_msg::<FreezeBalanceV2Contract>()
+            {
+                let row = FreezeBalanceV2ContractRow::from_grpc(
+                    num,
+                    transaction.txid.clone(),
+                    index.try_into().unwrap(),
+                    0,
+                    msg,
+                );
+                freeze_balance_v2_contract_row_list.push(row);
+            }
+            if let Ok(msg) = transaction
+                .transaction
+                .clone()
+                .unwrap()
+                .raw_data
+                .unwrap()
+                .contract[0]
+                .parameter
+                .clone()
+                .unwrap()
+                .to_msg::<UnfreezeBalanceV2Contract>()
+            {
+                let row = UnfreezeBalanceV2ContractRow::from_grpc(
+                    num,
+                    transaction.txid.clone(),
+                    index.try_into().unwrap(),
+                    0,
+                    msg,
+                );
+                unfreeze_balance_v2_contract_row_list.push(row);
+            }
 
             transaction_row_list.push(transaction_row);
         }
@@ -426,6 +630,38 @@ pub(crate) async fn init(
                     "INSERT INTO tron.orders FORMAT native",
                     order_detail_row_list.to_vec()
                 ),
+                klient.insert_native_block(
+                    "INSERT INTO tron.accountCreateContracts FORMAT native",
+                    account_create_contract_row_list.to_vec()
+                ),
+                klient.insert_native_block(
+                    "INSERT INTO tron.transferContracts FORMAT native",
+                    transfer_contract_row_list.to_vec()
+                ),
+                klient.insert_native_block(
+                    "INSERT INTO tron.transferAssetContracts FORMAT native",
+                    transfer_asset_contract_row_list.to_vec()
+                ),
+                klient.insert_native_block(
+                    "INSERT INTO tron.freezeBalanceContracts FORMAT native",
+                    freeze_balance_contract_row_list.to_vec()
+                ),
+                klient.insert_native_block(
+                    "INSERT INTO tron.unfreezeBalanceContracts FORMAT native",
+                    unfreeze_balance_contract_row_list.to_vec()
+                ),
+                klient.insert_native_block(
+                    "INSERT INTO tron.triggerSmartContracts FORMAT native",
+                    trigger_smart_contract_row_list.to_vec()
+                ),
+                klient.insert_native_block(
+                    "INSERT INTO tron.freezeBalanceV2Contracts FORMAT native",
+                    freeze_balance_v2_contract_row_list.to_vec()
+                ),
+                klient.insert_native_block(
+                    "INSERT INTO tron.unfreezeBalanceV2Contracts FORMAT native",
+                    unfreeze_balance_v2_contract_row_list.to_vec()
+                ),
             )
             .unwrap();
 
@@ -434,6 +670,15 @@ pub(crate) async fn init(
             log_row_list.clear();
             internal_row_list.clear();
             order_detail_row_list.clear();
+
+            account_create_contract_row_list.clear();
+            transfer_contract_row_list.clear();
+            transfer_asset_contract_row_list.clear();
+            freeze_balance_contract_row_list.clear();
+            unfreeze_balance_contract_row_list.clear();
+            trigger_smart_contract_row_list.clear();
+            freeze_balance_v2_contract_row_list.clear();
+            unfreeze_balance_v2_contract_row_list.clear();
 
             info!("{} done blocks & txs", num)
         }
@@ -456,6 +701,38 @@ pub(crate) async fn init(
         klient.insert_native_block(
             "INSERT INTO tron.orders FORMAT native",
             order_detail_row_list.to_vec()
+        ),
+        klient.insert_native_block(
+            "INSERT INTO tron.accountCreateContracts FORMAT native",
+            account_create_contract_row_list.to_vec()
+        ),
+        klient.insert_native_block(
+            "INSERT INTO tron.transferContracts FORMAT native",
+            transfer_contract_row_list.to_vec()
+        ),
+        klient.insert_native_block(
+            "INSERT INTO tron.transferAssetContracts FORMAT native",
+            transfer_asset_contract_row_list.to_vec()
+        ),
+        klient.insert_native_block(
+            "INSERT INTO tron.freezeBalanceContracts FORMAT native",
+            freeze_balance_contract_row_list.to_vec()
+        ),
+        klient.insert_native_block(
+            "INSERT INTO tron.unfreezeBalanceContracts FORMAT native",
+            unfreeze_balance_contract_row_list.to_vec()
+        ),
+        klient.insert_native_block(
+            "INSERT INTO tron.triggerSmartContracts FORMAT native",
+            trigger_smart_contract_row_list.to_vec()
+        ),
+        klient.insert_native_block(
+            "INSERT INTO tron.freezeBalanceV2Contracts FORMAT native",
+            freeze_balance_v2_contract_row_list.to_vec()
+        ),
+        klient.insert_native_block(
+            "INSERT INTO tron.unfreezeBalanceV2Contracts FORMAT native",
+            unfreeze_balance_v2_contract_row_list.to_vec()
         ),
     )
     .unwrap();

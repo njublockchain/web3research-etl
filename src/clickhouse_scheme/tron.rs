@@ -1,9 +1,49 @@
 use klickhouse::{u256, Bytes, Row};
 use serde_variant::to_variant_name;
 use tron_grpc::{
-    transaction_info::Log, BlockExtention, InternalTransaction, MarketOrderDetail,
-    TransactionExtention, TransactionInfo,
+    transaction_info::Log, AccountCreateContract, BlockExtention, FreezeBalanceContract,
+    FreezeBalanceV2Contract, InternalTransaction, MarketOrderDetail, TransactionExtention,
+    TransactionInfo, TransferAssetContract, TransferContract, TriggerSmartContract,
+    UnfreezeBalanceContract, UnfreezeBalanceV2Contract, VoteWitnessContract,
 };
+
+pub fn t_addr_from_21(len_21_addr: Vec<u8>) -> String {
+    if len_21_addr.len() == 0 {
+        return "".to_owned();
+    }
+
+    assert!(len_21_addr.len() == 20 || len_21_addr.len() == 21);
+    if len_21_addr.len() == 20 {
+        let mut addr = [0x41].to_vec();
+        addr.extend(len_21_addr);
+
+        bs58::encode(addr).with_check().into_string()
+    } else {
+        let t_addr = bs58::encode(&len_21_addr).with_check().into_string();
+        assert!(t_addr.starts_with("T"));
+        
+        t_addr
+    }
+}
+
+pub fn t_addr_from_32(len_32_addr: Vec<u8>) -> String {
+    if len_32_addr.len() == 0 {
+        return "".to_owned();
+    }
+
+    assert!(len_32_addr.len() == 32);
+
+    let base = len_32_addr
+        .strip_prefix(&[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+        .unwrap()
+        .to_vec();
+    let mut addr = [0x41].to_vec();
+    addr.extend(base);
+
+    let t_addr = bs58::encode(addr).with_check().into_string();
+    assert!(t_addr.starts_with("T"));
+    t_addr
+}
 
 #[derive(Row, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
@@ -14,7 +54,7 @@ pub struct BlockRow {
     pub parent_hash: Bytes,
     pub number: i64,
     pub witness_id: i64,
-    pub witness_address: Bytes,
+    pub witness_address: String,
     pub version: i32,
     pub account_state_root: Bytes,
     pub witness_signature: Bytes,
@@ -32,7 +72,7 @@ impl BlockRow {
             parent_hash: Bytes(header_raw_data.parent_hash),
             number: header_raw_data.number,
             witness_id: header_raw_data.witness_id,
-            witness_address: klickhouse::Bytes(header_raw_data.witness_address),
+            witness_address: t_addr_from_21(header_raw_data.witness_address),
             version: header_raw_data.version,
             account_state_root: klickhouse::Bytes(header_raw_data.account_state_root),
             witness_signature: klickhouse::Bytes(header.witness_signature),
@@ -69,7 +109,7 @@ pub struct TransactionRow {
     pub fee: i64,
     pub block_time_stamp: i64,
     pub contract_result: Bytes,
-    pub contract_address: Bytes,
+    pub contract_address: String,
 
     pub energy_usage: i64,
     pub energy_fee: i64,
@@ -167,8 +207,8 @@ impl TransactionRow {
             contract_result: transaction_info.map_or(Bytes::default(), |transaction_info| {
                 Bytes(transaction_info.contract_result[0].clone())
             }),
-            contract_address: transaction_info.map_or(Bytes::default(), |transaction_info| {
-                Bytes(transaction_info.contract_address.clone())
+            contract_address: transaction_info.map_or("".to_owned(), |transaction_info| {
+                t_addr_from_21(transaction_info.contract_address.clone())
             }),
             energy_usage: receipt.clone().map_or(0, |receipt| receipt.energy_usage),
             energy_fee: receipt.clone().map_or(0, |receipt| receipt.energy_fee),
@@ -229,7 +269,7 @@ pub struct LogRow {
     pub block_num: i64,
     pub transaction_hash: Bytes,
     pub log_index: i32,
-    pub address: Bytes,
+    pub address: String,
     pub topics: Vec<Bytes>,
     pub data: Bytes,
 }
@@ -240,7 +280,7 @@ impl LogRow {
             block_num,
             transaction_hash: Bytes(transaction_hash),
             log_index,
-            address: Bytes(log.address.clone()),
+            address: t_addr_from_21(log.address.clone()),
             topics: log
                 .topics
                 .iter()
@@ -259,8 +299,8 @@ pub struct InternalTransactionRow {
     pub internal_index: i32,
 
     pub hash: Bytes,
-    pub caller_address: Bytes,
-    pub transfer_to_address: Bytes,
+    pub caller_address: String,
+    pub transfer_to_address: String,
 
     #[klickhouse(rename = "callValueInfos.tokenId")]
     pub call_value_infos_token_id: Vec<String>, // _token_ids,call_values
@@ -284,8 +324,8 @@ impl InternalTransactionRow {
             internal_index,
 
             hash: Bytes(internal.hash.clone()),
-            caller_address: Bytes(internal.caller_address.clone()),
-            transfer_to_address: Bytes(internal.transfer_to_address.clone()),
+            caller_address: t_addr_from_21(internal.caller_address.clone()),
+            transfer_to_address: t_addr_from_21(internal.transfer_to_address.clone()),
             call_value_infos_token_id: internal
                 .call_value_info
                 .iter()
@@ -338,13 +378,41 @@ impl MarketOrderDetailRow {
     }
 }
 
-// #[derive(Row, Clone, Debug, Default)]
-// #[klickhouse(rename_all = "camelCase")]
-// pub struct AccountCreateContractRow {
-//     pub owner_address: Bytes,
-//     pub account_address: Bytes,
-//     pub r#type: String,
-// }
+/////////////////////////////////////////////////////////////////
+
+#[derive(Row, Clone, Debug, Default)]
+#[klickhouse(rename_all = "camelCase")]
+pub struct AccountCreateContractRow {
+    pub block_num: i64,
+    pub transaction_hash: Bytes,
+    pub transaction_index: i64,
+    pub contract_index: i64,
+
+    pub owner_address: String,
+    pub account_address: String,
+    pub r#type: i32,
+}
+
+impl AccountCreateContractRow {
+    pub fn from_grpc(
+        block_num: i64,
+        transaction_hash: Vec<u8>,
+        transaction_index: i64,
+        contract_index: i64,
+        call: AccountCreateContract,
+    ) -> Self {
+        Self {
+            block_num,
+            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_index,
+            contract_index,
+
+            owner_address: t_addr_from_21(call.owner_address),
+            account_address: t_addr_from_21(call.account_address),
+            r#type: call.r#type,
+        }
+    }
+}
 
 #[derive(Row, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
@@ -352,10 +420,32 @@ pub struct TransferContractRow {
     pub block_num: i64,
     pub transaction_hash: Bytes,
     pub transaction_index: i64,
+    pub contract_index: i64,
 
-    pub owner_address: Bytes,
-    pub to_address: Bytes,
+    pub owner_address: String,
+    pub to_address: String,
     pub amount: i64,
+}
+
+impl TransferContractRow {
+    pub fn from_grpc(
+        block_num: i64,
+        transaction_hash: Vec<u8>,
+        transaction_index: i64,
+        contract_index: i64,
+        call: TransferContract,
+    ) -> Self {
+        Self {
+            block_num,
+            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_index,
+            contract_index,
+
+            owner_address: t_addr_from_21(call.owner_address),
+            to_address: t_addr_from_21(call.to_address),
+            amount: call.amount,
+        }
+    }
 }
 
 #[derive(Row, Clone, Debug, Default)]
@@ -364,18 +454,331 @@ pub struct TransferAssetContractRow {
     pub block_num: i64,
     pub transaction_hash: Bytes,
     pub transaction_index: i64,
+    pub contract_index: i64,
 
-    pub asset_name: Vec<u8>,
-    pub owner_address: Vec<u8>,
-    pub to_address: Vec<u8>,
+    pub asset_name: Bytes,
+    pub owner_address: String,
+    pub to_address: String,
     pub amount: i64,
+}
+
+impl TransferAssetContractRow {
+    pub fn from_grpc(
+        block_num: i64,
+        transaction_hash: Vec<u8>,
+        transaction_index: i64,
+        contract_index: i64,
+        call: TransferAssetContract,
+    ) -> Self {
+        Self {
+            block_num,
+            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_index,
+            contract_index,
+
+            asset_name: klickhouse::Bytes(call.asset_name),
+            owner_address: t_addr_from_21(call.owner_address),
+            to_address: t_addr_from_21(call.to_address),
+            amount: call.amount,
+        }
+    }
 }
 
 // #[derive(Row, Clone, Debug, Default)]
 // #[klickhouse(rename_all = "camelCase")]
-// pub struct AssetIssueContractRow {
+// pub struct VoteWitnessContractRow {
+//     pub block_num: i64,
+//     pub transaction_hash: Bytes,
+//     pub transaction_index: i64,
 
+//     pub owner_address: Bytes,
+//     pub votes: ::prost::alloc::vec::Vec<vote_witness_contract::Vote>,
+//     pub support: bool,
 // }
+
+// impl VoteWitnessContractRow {
+//     pub fn from_grpc(
+//         block_num: i64,
+//         transaction_hash: Vec<u8>,
+//         transaction_index: i64,
+//         call: VoteWitnessContract,
+//     ) -> Self {
+//         Self {
+//             block_num,
+//             transaction_hash: klickhouse::Bytes(transaction_hash),
+//             transaction_index,
+
+//         }
+//     }
+// }
+
+#[derive(Row, Clone, Debug, Default)]
+#[klickhouse(rename_all = "camelCase")]
+pub struct WitnessCreateContract {}
+
+#[derive(Row, Clone, Debug, Default)]
+#[klickhouse(rename_all = "camelCase")]
+pub struct AssetIssueContract {}
+
+#[derive(Row, Clone, Debug, Default)]
+#[klickhouse(rename_all = "camelCase")]
+pub struct WitnessUpdateContract {}
+
+#[derive(Row, Clone, Debug, Default)]
+#[klickhouse(rename_all = "camelCase")]
+pub struct ParticipateAssetIssueContract {}
+#[derive(Row, Clone, Debug, Default)]
+#[klickhouse(rename_all = "camelCase")]
+pub struct AccountUpdateContract {}
+#[derive(Row, Clone, Debug, Default)]
+#[klickhouse(rename_all = "camelCase")]
+pub struct FreezeBalanceContractRow {
+    pub block_num: i64,
+    pub transaction_hash: Bytes,
+    pub transaction_index: i64,
+    pub contract_index: i64,
+
+    pub owner_address: String,
+    pub frozen_balance: i64,
+    pub frozen_duration: i64,
+    pub resource: i32,
+    pub receiver_address: String,
+}
+impl FreezeBalanceContractRow {
+    pub fn from_grpc(
+        block_num: i64,
+        transaction_hash: Vec<u8>,
+        transaction_index: i64,
+        contract_index: i64,
+        call: FreezeBalanceContract,
+    ) -> Self {
+        Self {
+            block_num,
+            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_index,
+            contract_index,
+
+            owner_address: t_addr_from_21(call.owner_address),
+            frozen_balance: call.frozen_balance,
+            frozen_duration: call.frozen_duration,
+            resource: call.resource,
+            receiver_address: t_addr_from_21(call.receiver_address),
+        }
+    }
+}
+#[derive(Row, Clone, Debug, Default)]
+#[klickhouse(rename_all = "camelCase")]
+pub struct UnfreezeBalanceContractRow {
+    pub block_num: i64,
+    pub transaction_hash: Bytes,
+    pub transaction_index: i64,
+    pub contract_index: i64,
+
+    pub owner_address: String,
+    pub resource: i32,
+    pub receiver_address: String,
+}
+impl UnfreezeBalanceContractRow {
+    pub fn from_grpc(
+        block_num: i64,
+        transaction_hash: Vec<u8>,
+        transaction_index: i64,
+        contract_index: i64,
+        call: UnfreezeBalanceContract,
+    ) -> Self {
+        Self {
+            block_num,
+            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_index,
+            contract_index,
+
+            owner_address: t_addr_from_21(call.owner_address),
+            resource: call.resource,
+            receiver_address: t_addr_from_21(call.receiver_address),
+        }
+    }
+}
+#[derive(Row, Clone, Debug, Default)]
+#[klickhouse(rename_all = "camelCase")]
+pub struct WithdrawBalanceContract {}
+#[derive(Row, Clone, Debug, Default)]
+#[klickhouse(rename_all = "camelCase")]
+pub struct UnfreezeAssetContract {}
+#[derive(Row, Clone, Debug, Default)]
+#[klickhouse(rename_all = "camelCase")]
+pub struct UpdateAssetContract {}
+#[derive(Row, Clone, Debug, Default)]
+#[klickhouse(rename_all = "camelCase")]
+pub struct ProposalCreateContract {}
+#[derive(Row, Clone, Debug, Default)]
+#[klickhouse(rename_all = "camelCase")]
+pub struct ProposalApproveContract {}
+
+#[derive(Row, Clone, Debug, Default)]
+#[klickhouse(rename_all = "camelCase")]
+pub struct ProposalDeleteContract {}
+#[derive(Row, Clone, Debug, Default)]
+#[klickhouse(rename_all = "camelCase")]
+pub struct SetAccountIdContract {}
+#[derive(Row, Clone, Debug, Default)]
+#[klickhouse(rename_all = "camelCase")]
+pub struct CreateSmartContract {}
+#[derive(Row, Clone, Debug, Default)]
+#[klickhouse(rename_all = "camelCase")]
+pub struct TriggerSmartContractRow {
+    pub block_num: i64,
+    pub transaction_hash: Bytes,
+    pub transaction_index: i64,
+    pub contract_index: i64,
+
+    owner_address: String,
+    contract_address: String,
+    call_value: i64,
+    data: Bytes,
+    call_token_value: i64,
+    token_id: i64,
+}
+impl TriggerSmartContractRow {
+    pub fn from_grpc(
+        block_num: i64,
+        transaction_hash: Vec<u8>,
+        transaction_index: i64,
+        contract_index: i64,
+        call: TriggerSmartContract,
+    ) -> Self {
+        Self {
+            block_num,
+            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_index,
+            contract_index,
+
+            owner_address: t_addr_from_21(call.owner_address),
+            contract_address: t_addr_from_21(call.contract_address),
+            call_value: call.call_value,
+            data: klickhouse::Bytes(call.data),
+            call_token_value: call.call_token_value,
+            token_id: call.token_id,
+        }
+    }
+}
+#[derive(Row, Clone, Debug, Default)]
+#[klickhouse(rename_all = "camelCase")]
+pub struct UpdateSettingContract {}
+#[derive(Row, Clone, Debug, Default)]
+#[klickhouse(rename_all = "camelCase")]
+pub struct ExchangeCreateContract {}
+#[derive(Row, Clone, Debug, Default)]
+#[klickhouse(rename_all = "camelCase")]
+pub struct ExchangeInjectContract {}
+#[derive(Row, Clone, Debug, Default)]
+#[klickhouse(rename_all = "camelCase")]
+pub struct ExchangeWithdrawContract {}
+#[derive(Row, Clone, Debug, Default)]
+#[klickhouse(rename_all = "camelCase")]
+pub struct ExchangeTransactionContract {}
+#[derive(Row, Clone, Debug, Default)]
+#[klickhouse(rename_all = "camelCase")]
+pub struct UpdateEnergyLimitContract {}
+#[derive(Row, Clone, Debug, Default)]
+#[klickhouse(rename_all = "camelCase")]
+pub struct AccountPermissionUpdateContract {}
+
+#[derive(Row, Clone, Debug, Default)]
+#[klickhouse(rename_all = "camelCase")]
+pub struct ClearAbiContract {}
+#[derive(Row, Clone, Debug, Default)]
+#[klickhouse(rename_all = "camelCase")]
+pub struct UpdateBrokerageContract {}
+#[derive(Row, Clone, Debug, Default)]
+#[klickhouse(rename_all = "camelCase")]
+pub struct ShieldedTransferContract {}
+#[derive(Row, Clone, Debug, Default)]
+#[klickhouse(rename_all = "camelCase")]
+pub struct MarketSellAssetContract {}
+#[derive(Row, Clone, Debug, Default)]
+#[klickhouse(rename_all = "camelCase")]
+pub struct MarketCancelOrderContract {}
+
+#[derive(Row, Clone, Debug, Default)]
+#[klickhouse(rename_all = "camelCase")]
+pub struct FreezeBalanceV2ContractRow {
+    pub block_num: i64,
+    pub transaction_hash: Bytes,
+    pub transaction_index: i64,
+    pub contract_index: i64,
+
+    pub owner_address: String,
+    pub frozen_balance: i64,
+    pub resource: i32,
+}
+impl FreezeBalanceV2ContractRow {
+    pub fn from_grpc(
+        block_num: i64,
+        transaction_hash: Vec<u8>,
+        transaction_index: i64,
+        contract_index: i64,
+        call: FreezeBalanceV2Contract,
+    ) -> Self {
+        Self {
+            block_num,
+            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_index,
+            contract_index,
+
+            owner_address: t_addr_from_21(call.owner_address),
+            frozen_balance: call.frozen_balance,
+            resource: call.resource,
+        }
+    }
+}
+#[derive(Row, Clone, Debug, Default)]
+#[klickhouse(rename_all = "camelCase")]
+pub struct UnfreezeBalanceV2ContractRow {
+    pub block_num: i64,
+    pub transaction_hash: Bytes,
+    pub transaction_index: i64,
+    pub contract_index: i64,
+
+    pub owner_address: String,
+    pub unfreeze_balance: i64,
+    pub resource: i32,
+}
+impl UnfreezeBalanceV2ContractRow {
+    pub fn from_grpc(
+        block_num: i64,
+        transaction_hash: Vec<u8>,
+        transaction_index: i64,
+        contract_index: i64,
+        call: UnfreezeBalanceV2Contract,
+    ) -> Self {
+        Self {
+            block_num,
+            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_index,
+            contract_index,
+
+            owner_address: t_addr_from_21(call.owner_address),
+            unfreeze_balance: call.unfreeze_balance,
+            resource: call.resource,
+        }
+    }
+}
+
+#[derive(Row, Clone, Debug, Default)]
+#[klickhouse(rename_all = "camelCase")]
+pub struct WithdrawExpireUnfreezeContract {}
+
+#[derive(Row, Clone, Debug, Default)]
+#[klickhouse(rename_all = "camelCase")]
+pub struct DelegateResourceContract {}
+
+#[derive(Row, Clone, Debug, Default)]
+#[klickhouse(rename_all = "camelCase")]
+pub struct UnDelegateResourceContract {}
+
+#[derive(Row, Clone, Debug, Default)]
+#[klickhouse(rename_all = "camelCase")]
+pub struct CancelAllUnfreezeV2Contract {}
 
 #[derive(Row, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
