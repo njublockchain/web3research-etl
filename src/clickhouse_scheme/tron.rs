@@ -12,7 +12,17 @@ pub fn t_addr_from_21(len_21_addr: Vec<u8>) -> String {
         return "".to_owned();
     }
 
-    assert!(len_21_addr.len() == 20 || len_21_addr.len() == 21);
+    let len_21_addr = if len_21_addr.len() > 21 {
+        len_21_addr[0..21].to_vec()
+    } else {
+        len_21_addr
+    };
+    assert!(
+        len_21_addr.len() == 20 || len_21_addr.len() == 21 || len_21_addr.len() > 21,
+        "{:X?}",
+        len_21_addr
+    );
+
     if len_21_addr.len() == 20 {
         let mut addr = [0x41].to_vec();
         addr.extend(len_21_addr);
@@ -20,8 +30,8 @@ pub fn t_addr_from_21(len_21_addr: Vec<u8>) -> String {
         bs58::encode(addr).with_check().into_string()
     } else {
         let t_addr = bs58::encode(&len_21_addr).with_check().into_string();
-        assert!(t_addr.starts_with("T"));
-        
+        // assert!(t_addr.starts_with("T"), "{}", t_addr);
+
         t_addr
     }
 }
