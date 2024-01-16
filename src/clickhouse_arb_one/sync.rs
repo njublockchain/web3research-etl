@@ -103,23 +103,23 @@ async fn handle_block(
     let num = block.number.unwrap().as_u64();
     tokio::try_join!(
         client.execute(format!(
-            "DELETE TABLE FROM arbitrumOne.blocks WHERE number = {} ",
+            "DELETE FROM arbitrumOne.blocks WHERE number = {} ",
             num
         )),
         client.execute(format!(
-            "DELETE TABLE FROM arbitrumOne.transactions WHERE blockNumber = {}') ",
+            "DELETE FROM arbitrumOne.transactions WHERE blockNumber = {}') ",
             num
         )),
         client.execute(format!(
-            "DELETE TABLE FROM arbitrumOne.events WHERE blockNumber = {}') ",
+            "DELETE FROM arbitrumOne.events WHERE blockNumber = {}') ",
             num
         )),
         client.execute(format!(
-            "DELETE TABLE FROM arbitrumOne.withdraws WHERE blockNumber = {}",
+            "DELETE FROM arbitrumOne.withdraws WHERE blockNumber = {}",
             num
         )),
         client.execute(format!(
-            "DELETE TABLE FROM arbitrumOne.traces WHERE blockNumber = {}",
+            "DELETE FROM arbitrumOne.traces WHERE blockNumber = {}",
             num
         )),
     )
@@ -193,23 +193,23 @@ pub async fn health_check(
             );
             tokio::try_join!(
                 client.execute(format!(
-                    "DELETE TABLE FROM arbitrumOne.blocks WHERE number = {} ",
+                    "DELETE FROM arbitrumOne.blocks WHERE number = {} ",
                     num
                 )),
                 client.execute(format!(
-                    "DELETE TABLE FROM arbitrumOne.transactions WHERE blockNumber = {}') ",
+                    "DELETE FROM arbitrumOne.transactions WHERE blockNumber = {}') ",
                     num
                 )),
                 client.execute(format!(
-                    "DELETE TABLE FROM arbitrumOne.events WHERE blockNumber = {}') ",
+                    "DELETE FROM arbitrumOne.events WHERE blockNumber = {}') ",
                     num
                 )),
                 client.execute(format!(
-                    "DELETE TABLE FROM arbitrumOne.withdraws WHERE blockNumber = {}",
+                    "DELETE FROM arbitrumOne.withdraws WHERE blockNumber = {}",
                     num
                 )),
                 client.execute(format!(
-                    "DELETE TABLE FROM arbitrumOne.traces WHERE blockNumber = {}",
+                    "DELETE FROM arbitrumOne.traces WHERE blockNumber = {}",
                     num
                 ))
             )
@@ -232,23 +232,23 @@ pub async fn health_check(
                         warn!("fix err block {}: no traces", num);
                         tokio::try_join!(
                             client.execute(format!(
-                                "DELETE TABLE FROM arbitrumOne.blocks WHERE number = {} ",
+                                "DELETE FROM arbitrumOne.blocks WHERE number = {} ",
                                 num
                             )),
                             client.execute(format!(
-                                "DELETE TABLE FROM arbitrumOne.transactions WHERE blockNumber = {}') ",
+                                "DELETE FROM arbitrumOne.transactions WHERE blockNumber = {}') ",
                                 num
                             )),
                             client.execute(format!(
-                                "DELETE TABLE FROM arbitrumOne.events WHERE blockNumber = {}') ",
+                                "DELETE FROM arbitrumOne.events WHERE blockNumber = {}') ",
                                 num
                             )),
                             client.execute(format!(
-                                "DELETE TABLE FROM arbitrumOne.withdraws WHERE blockNumber = {}",
+                                "DELETE FROM arbitrumOne.withdraws WHERE blockNumber = {}",
                                 num
                             )),
                             client.execute(format!(
-                                "DELETE TABLE FROM arbitrumOne.traces WHERE blockNumber = {}",
+                                "DELETE FROM arbitrumOne.traces WHERE blockNumber = {}",
                                 num
                             ))
                         )

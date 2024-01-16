@@ -103,23 +103,23 @@ async fn handle_block(
     let num = block.number.unwrap().as_u64();
     tokio::try_join!(
         client.execute(format!(
-            "DELETE TABLE FROM arbitrumNova.blocks WHERE number = {} ",
+            "DELETE FROM arbitrumNova.blocks WHERE number = {} ",
             num
         )),
         client.execute(format!(
-            "DELETE TABLE FROM arbitrumNova.transactions WHERE blockNumber = {}') ",
+            "DELETE FROM arbitrumNova.transactions WHERE blockNumber = {}') ",
             num
         )),
         client.execute(format!(
-            "DELETE TABLE FROM arbitrumNova.events WHERE blockNumber = {}') ",
+            "DELETE FROM arbitrumNova.events WHERE blockNumber = {}') ",
             num
         )),
         client.execute(format!(
-            "DELETE TABLE FROM arbitrumNova.withdraws WHERE blockNumber = {}",
+            "DELETE FROM arbitrumNova.withdraws WHERE blockNumber = {}",
             num
         )),
         client.execute(format!(
-            "DELETE TABLE FROM arbitrumNova.traces WHERE blockNumber = {}",
+            "DELETE FROM arbitrumNova.traces WHERE blockNumber = {}",
             num
         )),
     )
@@ -195,23 +195,23 @@ pub async fn health_check(
             );
             tokio::try_join!(
                 client.execute(format!(
-                    "DELETE TABLE FROM arbitrumNova.blocks WHERE number = {} ",
+                    "DELETE FROM arbitrumNova.blocks WHERE number = {} ",
                     num
                 )),
                 client.execute(format!(
-                    "DELETE TABLE FROM arbitrumNova.transactions WHERE blockNumber = {}') ",
+                    "DELETE FROM arbitrumNova.transactions WHERE blockNumber = {}') ",
                     num
                 )),
                 client.execute(format!(
-                    "DELETE TABLE FROM arbitrumNova.events WHERE blockNumber = {}') ",
+                    "DELETE FROM arbitrumNova.events WHERE blockNumber = {}') ",
                     num
                 )),
                 client.execute(format!(
-                    "DELETE TABLE FROM arbitrumNova.withdraws WHERE blockNumber = {}",
+                    "DELETE FROM arbitrumNova.withdraws WHERE blockNumber = {}",
                     num
                 )),
                 client.execute(format!(
-                    "DELETE TABLE FROM arbitrumNova.traces WHERE blockNumber = {}",
+                    "DELETE FROM arbitrumNova.traces WHERE blockNumber = {}",
                     num
                 ))
             )
@@ -234,23 +234,23 @@ pub async fn health_check(
                         warn!("fix err block {}: no traces", num);
                         tokio::try_join!(
                             client.execute(format!(
-                                "DELETE TABLE FROM arbitrumNova.blocks WHERE number = {} ",
+                                "DELETE FROM arbitrumNova.blocks WHERE number = {} ",
                                 num
                             )),
                             client.execute(format!(
-                                "DELETE TABLE FROM arbitrumNova.transactions WHERE blockNumber = {}') ",
+                                "DELETE FROM arbitrumNova.transactions WHERE blockNumber = {}') ",
                                 num
                             )),
                             client.execute(format!(
-                                "DELETE TABLE FROM arbitrumNova.events WHERE blockNumber = {}') ",
+                                "DELETE FROM arbitrumNova.events WHERE blockNumber = {}') ",
                                 num
                             )),
                             client.execute(format!(
-                                "DELETE TABLE FROM arbitrumNova.withdraws WHERE blockNumber = {}",
+                                "DELETE FROM arbitrumNova.withdraws WHERE blockNumber = {}",
                                 num
                             )),
                             client.execute(format!(
-                                "DELETE TABLE FROM arbitrumNova.traces WHERE blockNumber = {}",
+                                "DELETE FROM arbitrumNova.traces WHERE blockNumber = {}",
                                 num
                             ))
                         )

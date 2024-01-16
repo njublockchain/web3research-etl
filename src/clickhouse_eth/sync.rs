@@ -94,23 +94,23 @@ async fn handle_block(
     let num = block.number.unwrap().as_u64();
     tokio::try_join!(
         client.execute(format!(
-            "DELETE TABLE FROM ethereum.blocks WHERE number = {} ",
+            "DELETE FROM ethereum.blocks WHERE number = {} ",
             num
         )),
         client.execute(format!(
-            "DELETE TABLE FROM ethereum.transactions WHERE blockNumber = {}') ",
+            "DELETE FROM ethereum.transactions WHERE blockNumber = {}') ",
             num
         )),
         client.execute(format!(
-            "DELETE TABLE FROM ethereum.events WHERE blockNumber = {}') ",
+            "DELETE FROM ethereum.events WHERE blockNumber = {}') ",
             num
         )),
         client.execute(format!(
-            "DELETE TABLE FROM ethereum.withdraws WHERE blockNumber = {}",
+            "DELETE FROM ethereum.withdraws WHERE blockNumber = {}",
             num
         )),
         client.execute(format!(
-            "DELETE TABLE FROM ethereum.traces WHERE blockNumber = {}",
+            "DELETE FROM ethereum.traces WHERE blockNumber = {}",
             num
         )),
     )
@@ -186,23 +186,23 @@ pub async fn health_check(
             );
             tokio::try_join!(
                 client.execute(format!(
-                    "DELETE TABLE FROM ethereum.blocks WHERE number = {} ",
+                    "DELETE FROM ethereum.blocks WHERE number = {} ",
                     num
                 )),
                 client.execute(format!(
-                    "DELETE TABLE FROM ethereum.transactions WHERE blockNumber = {}') ",
+                    "DELETE FROM ethereum.transactions WHERE blockNumber = {}') ",
                     num
                 )),
                 client.execute(format!(
-                    "DELETE TABLE FROM ethereum.events WHERE blockNumber = {}') ",
+                    "DELETE FROM ethereum.events WHERE blockNumber = {}') ",
                     num
                 )),
                 client.execute(format!(
-                    "DELETE TABLE FROM ethereum.withdraws WHERE blockNumber = {}",
+                    "DELETE FROM ethereum.withdraws WHERE blockNumber = {}",
                     num
                 )),
                 client.execute(format!(
-                    "DELETE TABLE FROM ethereum.traces WHERE blockNumber = {}",
+                    "DELETE FROM ethereum.traces WHERE blockNumber = {}",
                     num
                 ))
             )
@@ -225,23 +225,23 @@ pub async fn health_check(
                         warn!("fix err block {}: no traces", num);
                         tokio::try_join!(
                             client.execute(format!(
-                                "DELETE TABLE FROM ethereum.blocks WHERE number = {} ",
+                                "DELETE FROM ethereum.blocks WHERE number = {} ",
                                 num
                             )),
                             client.execute(format!(
-                                "DELETE TABLE FROM ethereum.transactions WHERE blockNumber = {}') ",
+                                "DELETE FROM ethereum.transactions WHERE blockNumber = {}') ",
                                 num
                             )),
                             client.execute(format!(
-                                "DELETE TABLE FROM ethereum.events WHERE blockNumber = {}') ",
+                                "DELETE FROM ethereum.events WHERE blockNumber = {}') ",
                                 num
                             )),
                             client.execute(format!(
-                                "DELETE TABLE FROM ethereum.withdraws WHERE blockNumber = {}",
+                                "DELETE FROM ethereum.withdraws WHERE blockNumber = {}",
                                 num
                             )),
                             client.execute(format!(
-                                "DELETE TABLE FROM ethereum.traces WHERE blockNumber = {}",
+                                "DELETE FROM ethereum.traces WHERE blockNumber = {}",
                                 num
                             ))
                         )
