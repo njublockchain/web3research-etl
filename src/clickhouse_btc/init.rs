@@ -42,7 +42,7 @@ pub(crate) async fn init(
 
     let bitcoin_rpc_url = Url::parse(&provider).unwrap();
 
-    let client = bitcoincore_rpc::Client::new(
+    let provider = bitcoincore_rpc::Client::new(
         format!(
             "{}://{}:{}",
             bitcoin_rpc_url.scheme(),
@@ -196,7 +196,7 @@ pub(crate) async fn init(
         .await
         .unwrap();
 
-    let latest_height = client.get_block_count()? - 1;
+    let latest_height = provider.get_block_count()? - 1;
     let to = latest_height / 1000 * 1000;
     warn!("target: {}", to);
 
@@ -205,9 +205,9 @@ pub(crate) async fn init(
     let mut output_row_list = Vec::new();
 
     for num in from..=to {
-        let hash = client.get_block_hash(num)?;
+        let hash = provider.get_block_hash(num)?;
         // let cli = client.get_jsonrpc_client();
-        let block = client.get_block(&hash)?;
+        let block = provider.get_block(&hash)?;
         let block_hash = block.block_hash();
 
         let block_row = BlockRow {

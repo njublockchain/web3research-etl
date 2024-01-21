@@ -173,7 +173,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
             trace_provider,
             provider_type,
         } => match chain {
-            SupportedChain::Bitcoin => {}
+            SupportedChain::Bitcoin => {
+                clickhouse_btc::check::check(db, provider, trace_provider, provider_type, from)
+                    .await?;
+            }
             SupportedChain::Ethereum => {
                 clickhouse_eth::check::check(db, provider, trace_provider, provider_type, from)
                     .await?;

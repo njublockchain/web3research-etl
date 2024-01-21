@@ -2033,6 +2033,7 @@ dependencies = [
  "clap",
  "env_logger",
  "ethers",
+ "hex",
  "klickhouse",
  "log",
  "num_cpus",
