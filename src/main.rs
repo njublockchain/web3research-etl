@@ -2,8 +2,10 @@ mod clickhouse_arb_nova;
 mod clickhouse_arb_one;
 mod clickhouse_btc;
 mod clickhouse_eth;
-mod clickhouse_scheme;
+mod clickhouse_polygon;
 mod clickhouse_tron;
+
+mod clickhouse_scheme;
 
 use clap::Parser;
 use std::error::Error;
@@ -96,6 +98,7 @@ pub enum SupportedChain {
     Tron,
     ArbitrumOne,
     ArbitrumNova,
+    Polygon,
 }
 
 #[derive(clap::ValueEnum, Copy, Clone, PartialEq, Eq, Debug)]
@@ -149,6 +152,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 )
                 .await?
             }
+            SupportedChain::Polygon => {
+                clickhouse_polygon::init::init(
+                    db,
+                    provider,
+                    trace_provider,
+                    provider_type,
+                    from,
+                    batch,
+                )
+                .await?
+            }
         },
         ClapActionType::Sync {
             chain,
@@ -164,6 +178,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
             SupportedChain::Tron => {}
             SupportedChain::ArbitrumOne => todo!(),
             SupportedChain::ArbitrumNova => todo!(),
+            SupportedChain::Polygon => {
+                clickhouse_polygon::sync::sync(db, provider, trace_provider, provider_type).await?
+            }
         },
         ClapActionType::Check {
             from,
@@ -184,6 +201,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
             SupportedChain::Tron => {}
             SupportedChain::ArbitrumOne => {}
             SupportedChain::ArbitrumNova => {}
+            SupportedChain::Polygon => {
+                clickhouse_polygon::check::check(db, provider, trace_provider, provider_type, from)
+                    .await?;
+            }
         },
     }
     // if args.db.starts_with("clickhouse") {
