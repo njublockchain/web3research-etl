@@ -48,16 +48,14 @@ impl BlockRow {
             miner: block.author.unwrap().0.to_vec().into(),
             nonce: block.nonce.unwrap().0.to_vec().into(),
             mix_hash: block.mix_hash.unwrap().0.to_vec().into(),
-            base_fee_per_gas: block
-                .base_fee_per_gas.map(|fee| u256(fee.into())),
+            base_fee_per_gas: block.base_fee_per_gas.map(|fee| u256(fee.into())),
             gas_limit: u256(block.gas_limit.into()),
             gas_used: u256(block.gas_used.into()),
             state_root: block.state_root.0.to_vec().into(),
             transactions_root: block.transactions_root.0.to_vec().into(),
             receipts_root: block.receipts_root.0.to_vec().into(),
             logs_bloom: block.logs_bloom.unwrap().0.to_vec().into(),
-            withdrawls_root: block
-                .withdrawals_root.map(|root| root.0.to_vec().into()),
+            withdrawls_root: block.withdrawals_root.map(|root| root.0.to_vec().into()),
             extra_data: block.extra_data.to_vec().into(),
             timestamp: u256(block.timestamp.into()),
             size: u256(block.size.unwrap().into()),
@@ -120,23 +118,23 @@ impl TransactionRow {
             nonce: u256(transaction.nonce.into()),
             input: transaction.input.to_vec().into(),
             gas: u256(transaction.gas.into()),
-            gas_price: transaction
-                .gas_price.map(|price| u256(price.into())),
-            max_fee_per_gas: transaction
-                .max_fee_per_gas.map(|fee| u256(fee.into())),
+            gas_price: transaction.gas_price.map(|price| u256(price.into())),
+            max_fee_per_gas: transaction.max_fee_per_gas.map(|fee| u256(fee.into())),
             max_priority_fee_per_gas: transaction
-                .max_priority_fee_per_gas.map(|fee| u256(fee.into())),
+                .max_priority_fee_per_gas
+                .map(|fee| u256(fee.into())),
             r: u256(transaction.r.into()),
             s: u256(transaction.s.into()),
             v: transaction.v.as_u64(),
             access_list: transaction
                 .access_list
-                .as_ref().map(|al| serde_json::to_string(&al.clone().to_owned()).unwrap()),
+                .as_ref()
+                .map(|al| serde_json::to_string(&al.clone().to_owned()).unwrap()),
             contract_address: receipt
-                .contract_address.map(|contract| contract.0.to_vec().into()),
+                .contract_address
+                .map(|contract| contract.0.to_vec().into()),
             cumulative_gas_used: u256(receipt.cumulative_gas_used.into()),
-            effective_gas_price: receipt
-                .effective_gas_price.map(|price| u256(price.into())),
+            effective_gas_price: receipt.effective_gas_price.map(|price| u256(price.into())),
             gas_used: u256(receipt.gas_used.unwrap().into()),
             logs_bloom: receipt.logs_bloom.0.to_vec().into(),
             root: receipt.root.map(|root| root.0.to_vec().into()), // Only present before activation of [EIP-658]
@@ -155,7 +153,10 @@ pub struct EventRow {
     pub transaction_index: u64,
     pub log_index: u256,
     pub removed: bool,
-    pub topics: Vec<Bytes>,
+    pub topic0: Option<Bytes>,
+    pub topic1: Option<Bytes>,
+    pub topic2: Option<Bytes>,
+    pub topic3: Option<Bytes>,
     pub data: Bytes,
     pub address: Bytes,
 }
@@ -165,6 +166,12 @@ impl EventRow {
     where
         T: serde::ser::Serialize,
     {
+        let topics: Vec<Bytes> = log
+            .topics
+            .iter()
+            .map(|topic| topic.0.to_vec().into())
+            .collect();
+
         Self {
             block_hash: log.block_hash.unwrap().0.to_vec().into(),
             block_number: log.block_number.unwrap().as_u64(),
@@ -173,11 +180,10 @@ impl EventRow {
             transaction_index: transaction.transaction_index.unwrap().as_u64(),
             log_index: u256(log.log_index.unwrap().into()),
             removed: log.removed.unwrap(),
-            topics: log
-                .topics
-                .iter()
-                .map(|topic| topic.0.to_vec().into())
-                .collect(),
+            topic0: topics.get(0).cloned(),
+            topic1: topics.get(1).cloned(),
+            topic2: topics.get(2).cloned(),
+            topic3: topics.get(3).cloned(),
             data: log.data.to_vec().into(),
             address: log.address.0.to_vec().into(),
         }
@@ -303,8 +309,7 @@ impl TraceRow {
             trace_address: trace.trace_address.iter().map(|t| *t as u64).collect(),
             subtraces: trace.subtraces as u64,
             transaction_position: trace.transaction_position.map(|pos| pos as u64),
-            transaction_hash: trace
-                .transaction_hash.map(|h| h.0.to_vec().into()),
+            transaction_hash: trace.transaction_hash.map(|h| h.0.to_vec().into()),
             block_number: trace.block_number,
             block_timestamp: u256(block.timestamp.into()),
             block_hash: trace.block_hash.0.to_vec().into(),

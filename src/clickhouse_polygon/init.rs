@@ -58,7 +58,7 @@ pub async fn get_block_details(
                 for tx in txs {
                     // let provider = provider.clone();
                     // set.spawn(async move {
-                    println!("{:?}", tx.hash);
+
                     let receipt = provider
                         .get_transaction_receipt(tx.hash)
                         .await

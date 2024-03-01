@@ -58,7 +58,7 @@ pub async fn get_block_details(
                 for tx in txs {
                     // let provider = provider.clone();
                     // set.spawn(async move {
-                    println!("{:?}", tx.hash);
+  
                     let receipt = provider
                         .get_transaction_receipt(tx.hash)
                         .await
@@ -203,7 +203,10 @@ pub(crate) async fn init(
             transactionIndex UInt64,
             logIndex UInt256,
             removed Boolean,
-            topics Array(FixedString(32)),
+            topic0 Nullable(FixedString(32)),
+            topic1 Nullable(FixedString(32)),
+            topic2 Nullable(FixedString(32)),
+            topic3 Nullable(FixedString(32)),
             data String,
         ) ENGINE=ReplacingMergeTree
         ORDER BY (transactionHash, logIndex);
