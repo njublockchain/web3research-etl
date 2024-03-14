@@ -209,7 +209,10 @@ pub(crate) async fn init(
             transactionIndex UInt64,
             logIndex UInt256,
             removed Boolean,
-            topics Array(FixedString(32)),
+            topic0 Nullable(FixedString(32)),
+            topic1 Nullable(FixedString(32)),
+            topic2 Nullable(FixedString(32)),
+            topic3 Nullable(FixedString(32)),
             data String,
         ) ENGINE=ReplacingMergeTree
         ORDER BY (transactionHash, logIndex);

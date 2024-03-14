@@ -227,7 +227,10 @@ pub struct EventRow {
     pub transaction_index: u64,
     pub log_index: u256,
     pub removed: bool,
-    pub topics: Vec<Bytes>,
+    pub topic0: Option<Bytes>,
+    pub topic1: Option<Bytes>,
+    pub topic2: Option<Bytes>,
+    pub topic3: Option<Bytes>,
     pub data: Bytes,
     pub address: Bytes,
 }
@@ -237,6 +240,12 @@ impl EventRow {
     where
         T: serde::ser::Serialize,
     {
+        let topics: Vec<Bytes> = log
+            .topics
+            .iter()
+            .map(|topic| topic.0.to_vec().into())
+            .collect();
+
         Self {
             block_hash: log.block_hash.unwrap().0.to_vec().into(),
             block_number: log.block_number.unwrap().as_u64(),
@@ -245,11 +254,10 @@ impl EventRow {
             transaction_index: transaction.transaction_index.unwrap().as_u64(),
             log_index: u256(log.log_index.unwrap().into()),
             removed: log.removed.unwrap(),
-            topics: log
-                .topics
-                .iter()
-                .map(|topic| topic.0.to_vec().into())
-                .collect(),
+            topic0: topics.get(0).cloned(),
+            topic1: topics.get(1).cloned(),
+            topic2: topics.get(2).cloned(),
+            topic3: topics.get(3).cloned(),
             data: log.data.to_vec().into(),
             address: log.address.0.to_vec().into(),
         }
