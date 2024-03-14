@@ -280,22 +280,32 @@ pub struct LogRow {
     pub transaction_hash: Bytes,
     pub log_index: i32,
     pub address: String,
-    pub topics: Vec<Bytes>,
+    
+    pub topic0: Option<Bytes>,
+    pub topic1: Option<Bytes>,
+    pub topic2: Option<Bytes>,
+    pub topic3: Option<Bytes>,
+
     pub data: Bytes,
 }
 
 impl LogRow {
     pub fn from_grpc(block_num: i64, transaction_hash: Vec<u8>, log_index: i32, log: &Log) -> Self {
+        let topics: Vec<Bytes> = log
+            .topics
+            .iter()
+            .map(|topic| topic.to_vec().into())
+            .collect();
+
         Self {
             block_num,
             transaction_hash: Bytes(transaction_hash),
             log_index,
             address: t_addr_from_21(log.address.clone()),
-            topics: log
-                .topics
-                .iter()
-                .map(|topic| Bytes(topic.to_vec()))
-                .collect(),
+            topic0: topics.get(0).cloned(),
+            topic1: topics.get(1).cloned(),
+            topic2: topics.get(2).cloned(),
+            topic3: topics.get(3).cloned(),
             data: Bytes(log.data.clone()),
         }
     }
@@ -641,12 +651,12 @@ pub struct TriggerSmartContractRow {
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    owner_address: String,
-    contract_address: String,
-    call_value: i64,
-    data: Bytes,
-    call_token_value: i64,
-    token_id: i64,
+    pub owner_address: String,
+    pub contract_address: String,
+    pub call_value: i64,
+    pub data: Bytes,
+    pub call_token_value: i64,
+    pub token_id: i64,
 }
 impl TriggerSmartContractRow {
     pub fn from_grpc(

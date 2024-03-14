@@ -217,7 +217,10 @@ pub(crate) async fn init(
             
                 `address` FixedString(34),
             
-                `topics` Array(FixedString(32)),
+                topic0 Nullable(FixedString(32)),
+                topic1 Nullable(FixedString(32)),
+                topic2 Nullable(FixedString(32)),
+                topic3 Nullable(FixedString(32)),
             
                 `data` String
             )
