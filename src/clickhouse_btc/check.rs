@@ -26,7 +26,7 @@ pub(crate) async fn check(
         klickhouse::ClientOptions {
             username: clickhouse_url.username().to_string(),
             password: clickhouse_url.password().unwrap_or("").to_string(),
-            default_database: clickhouse_url.path().to_string(),
+            default_database: clickhouse_url.path().to_string().strip_prefix('/').unwrap().to_string(),
         }
     } else {
         klickhouse::ClientOptions::default()
@@ -66,7 +66,7 @@ pub(crate) async fn check(
 
     debug!("start interval update");
     let local_height = klient
-        .query_one::<MaxNumberRow>("SELECT max(height) as max FROM bitcoin.blocks")
+        .query_one::<MaxNumberRow>("SELECT max(height) as max FROM blocks")
         .await?;
     info!("local height {}", local_height.max);
     let latest = provider.get_block_count()? - 1;

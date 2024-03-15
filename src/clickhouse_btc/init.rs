@@ -5,7 +5,10 @@ use bitcoincore_rpc::{Client, RpcApi};
 use log::{debug, info, warn};
 use url::Url;
 
-use crate::{clickhouse_scheme::bitcoin::{BlockRow, InputRow, OutputRow}, ProviderType};
+use crate::{
+    clickhouse_scheme::bitcoin::{BlockRow, InputRow, OutputRow},
+    ProviderType,
+};
 
 pub(crate) async fn init(
     db: String,
@@ -17,14 +20,17 @@ pub(crate) async fn init(
     let clickhouse_url = Url::parse(&db).unwrap();
     // warn!("db: {} path: {}", format!("{}:{}", clickhouse_url.host().unwrap(), clickhouse_url.port().unwrap()), clickhouse_url.path());
 
-    let options = if clickhouse_url.path() != "/default"
-        || !clickhouse_url.username().is_empty()
-    {
+    let options = if clickhouse_url.path() != "/default" || !clickhouse_url.username().is_empty() {
         warn!("auth enabled for clickhouse");
         klickhouse::ClientOptions {
             username: clickhouse_url.username().to_string(),
             password: clickhouse_url.password().unwrap_or("").to_string(),
-            default_database: clickhouse_url.path().to_string(),
+            default_database: clickhouse_url
+                .path()
+                .to_string()
+                .strip_prefix('/')
+                .unwrap()
+                .to_string(),
         }
     } else {
         klickhouse::ClientOptions::default()
@@ -59,19 +65,15 @@ pub(crate) async fn init(
 
     debug!("start initializing schema");
     klient
-        .execute(
-            "
-        CREATE DATABASE IF NOT EXISTS bitcoin;
-        ",
-        )
+        .execute(format!("CREATE DATABASE IF NOT EXISTS {}", options.default_database).as_str())
         .await?;
 
     klient
         .execute(
             "
-            -- bitcoin.blocks definition
+            -- blocks definition
 
-            CREATE TABLE IF NOT EXISTS bitcoin.blocks
+            CREATE TABLE IF NOT EXISTS blocks
             (
             
                 `height` UInt64,
@@ -109,9 +111,9 @@ pub(crate) async fn init(
     klient
         .execute(
             "
-            -- bitcoin.inputs definition
+            -- inputs definition
 
-            CREATE TABLE IF NOT EXISTS bitcoin.inputs
+            CREATE TABLE IF NOT EXISTS inputs
             (
             
                 `txid` FixedString(32),
@@ -156,9 +158,9 @@ pub(crate) async fn init(
     klient
         .execute(
             "
-            -- bitcoin.outputs definition
+            -- outputs definition
 
-            CREATE TABLE IF NOT EXISTS bitcoin.outputs
+            CREATE TABLE IF NOT EXISTS outputs
             (
             
                 `txid` FixedString(32),
@@ -257,7 +259,8 @@ pub(crate) async fn init(
 
             for (index, vout) in tx.output.iter().enumerate() {
                 let address = Address::from_script(&vout.script_pubkey, bitcoin::Network::Bitcoin)
-                    .ok().map(|s| s.to_string());
+                    .ok()
+                    .map(|s| s.to_string());
                 let output_row = OutputRow {
                     txid: tx.txid().as_byte_array().to_vec().into(),
                     size: tx.size() as u32,
@@ -281,15 +284,15 @@ pub(crate) async fn init(
         if (num - from + 1) % batch == 0 {
             tokio::try_join!(
                 klient.insert_native_block(
-                    "INSERT INTO bitcoin.blocks FORMAT native",
+                    "INSERT INTO blocks FORMAT native",
                     block_row_list.to_vec()
                 ),
                 klient.insert_native_block(
-                    "INSERT INTO bitcoin.inputs FORMAT native",
+                    "INSERT INTO inputs FORMAT native",
                     input_row_list.to_vec()
                 ),
                 klient.insert_native_block(
-                    "INSERT INTO bitcoin.outputs FORMAT native",
+                    "INSERT INTO outputs FORMAT native",
                     output_row_list.to_vec()
                 ),
             )
@@ -304,16 +307,10 @@ pub(crate) async fn init(
     }
 
     tokio::try_join!(
+        klient.insert_native_block("INSERT INTO blocks FORMAT native", block_row_list.to_vec()),
+        klient.insert_native_block("INSERT INTO inputs FORMAT native", input_row_list.to_vec()),
         klient.insert_native_block(
-            "INSERT INTO bitcoin.blocks FORMAT native",
-            block_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO bitcoin.inputs FORMAT native",
-            input_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO bitcoin.outputs FORMAT native",
+            "INSERT INTO outputs FORMAT native",
             output_row_list.to_vec()
         ),
     )

@@ -97,7 +97,12 @@ pub(crate) async fn init(
         klickhouse::ClientOptions {
             username: clickhouse_url.username().to_string(),
             password: clickhouse_url.password().unwrap_or("").to_string(),
-            default_database: clickhouse_url.path().to_string(),
+            default_database: clickhouse_url
+                .path()
+                .to_string()
+                .strip_prefix('/')
+                .unwrap()
+                .to_string(),
         }
     } else {
         klickhouse::ClientOptions::default()
@@ -119,17 +124,13 @@ pub(crate) async fn init(
 
     debug!("start initializing schema");
     klient
-        .execute(
-            "
-        CREATE DATABASE IF NOT EXISTS arbitrumOne;
-        ",
-        )
+        .execute(format!("CREATE DATABASE IF NOT EXISTS {}", options.default_database).as_str())
         .await
         .unwrap();
     klient
         .execute(
             "
-        CREATE TABLE IF NOT EXISTS arbitrumOne.blocks (
+        CREATE TABLE IF NOT EXISTS blocks (
             hash             FixedString(32),
             number           UInt64,
             parentHash       FixedString(32),
@@ -162,7 +163,7 @@ pub(crate) async fn init(
         .await
         .unwrap();
     klient.execute("
-        CREATE TABLE IF NOT EXISTS arbitrumOne.transactions (
+        CREATE TABLE IF NOT EXISTS transactions (
             hash             FixedString(32),
             blockHash        FixedString(32),
             blockNumber      UInt64,
@@ -200,7 +201,7 @@ pub(crate) async fn init(
     klient
         .execute(
             "
-        CREATE TABLE IF NOT EXISTS arbitrumOne.events (
+        CREATE TABLE IF NOT EXISTS events (
             address FixedString(20),
             blockHash FixedString(32),
             blockNumber UInt64,
@@ -223,7 +224,7 @@ pub(crate) async fn init(
     klient
         .execute(
             "
-        CREATE TABLE IF NOT EXISTS arbitrumOne.withdraws (
+        CREATE TABLE IF NOT EXISTS withdraws (
             blockHash String,
             blockNumber UInt64,
             blockTimestamp UInt256,
@@ -240,7 +241,7 @@ pub(crate) async fn init(
     klient
         .execute(
             "
-            CREATE TABLE IF NOT EXISTS arbitrumOne.traces
+            CREATE TABLE IF NOT EXISTS traces
             (
                 `blockPos`    UInt64,
                 `blockNumber` UInt64,
@@ -371,23 +372,23 @@ pub(crate) async fn init(
         if (num - from + 1) % batch == 0 {
             tokio::try_join!(
                 klient.insert_native_block(
-                    "INSERT INTO arbitrumOne.blocks FORMAT native",
+                    "INSERT INTO blocks FORMAT native",
                     block_row_list.to_vec()
                 ),
                 klient.insert_native_block(
-                    "INSERT INTO arbitrumOne.transactions FORMAT native",
+                    "INSERT INTO transactions FORMAT native",
                     transaction_row_list.to_vec()
                 ),
                 klient.insert_native_block(
-                    "INSERT INTO arbitrumOne.events FORMAT native",
+                    "INSERT INTO events FORMAT native",
                     event_row_list.to_vec()
                 ),
                 klient.insert_native_block(
-                    "INSERT INTO arbitrumOne.withdraws FORMAT native",
+                    "INSERT INTO withdraws FORMAT native",
                     withdraw_row_list.to_vec()
                 ),
                 klient.insert_native_block(
-                    "INSERT INTO arbitrumOne.traces FORMAT native",
+                    "INSERT INTO traces FORMAT native",
                     trace_row_list.to_vec()
                 )
             )
@@ -403,26 +404,17 @@ pub(crate) async fn init(
     }
 
     tokio::try_join!(
+        klient.insert_native_block("INSERT INTO blocks FORMAT native", block_row_list.to_vec()),
         klient.insert_native_block(
-            "INSERT INTO arbitrumOne.blocks FORMAT native",
-            block_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO arbitrumOne.transactions FORMAT native",
+            "INSERT INTO transactions FORMAT native",
             transaction_row_list.to_vec()
         ),
+        klient.insert_native_block("INSERT INTO events FORMAT native", event_row_list.to_vec()),
         klient.insert_native_block(
-            "INSERT INTO arbitrumOne.events FORMAT native",
-            event_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO arbitrumOne.withdraws FORMAT native",
+            "INSERT INTO withdraws FORMAT native",
             withdraw_row_list.to_vec()
         ),
-        klient.insert_native_block(
-            "INSERT INTO arbitrumOne.traces FORMAT native",
-            trace_row_list.to_vec()
-        )
+        klient.insert_native_block("INSERT INTO traces FORMAT native", trace_row_list.to_vec())
     )
     .unwrap();
 

@@ -12,9 +12,9 @@ use tokio_retry::{
 };
 use url::Url;
 
-use crate::clickhouse_scheme::arbitrum::{
+use crate::{clickhouse_scheme::arbitrum::{
     BlockRow, EventRow, TraceRow, TransactionRow, WithdrawalRow,
-};
+}, ProviderType};
 
 use super::init::get_block_details;
 
@@ -70,23 +70,23 @@ async fn insert_block(
 
     tokio::try_join!(
         client.insert_native_block(
-            "INSERT INTO arbitrumOne.blocks FORMAT native",
+            "INSERT INTO blocks FORMAT native",
             block_row_list
         ),
         client.insert_native_block(
-            "INSERT INTO arbitrumOne.transactions FORMAT native",
+            "INSERT INTO transactions FORMAT native",
             transaction_row_list
         ),
         client.insert_native_block(
-            "INSERT INTO arbitrumOne.events FORMAT native",
+            "INSERT INTO events FORMAT native",
             event_row_list
         ),
         client.insert_native_block(
-            "INSERT INTO arbitrumOne.withdraws FORMAT native",
+            "INSERT INTO withdraws FORMAT native",
             withdraw_row_list
         ),
         client.insert_native_block(
-            "INSERT INTO arbitrumOne.traces FORMAT native",
+            "INSERT INTO traces FORMAT native",
             trace_row_list
         )
     )?;
@@ -103,23 +103,23 @@ async fn handle_block(
     let num = block.number.unwrap().as_u64();
     tokio::try_join!(
         client.execute(format!(
-            "DELETE FROM arbitrumOne.blocks WHERE number = {} ",
+            "DELETE FROM blocks WHERE number = {} ",
             num
         )),
         client.execute(format!(
-            "DELETE FROM arbitrumOne.transactions WHERE blockNumber = {}') ",
+            "DELETE FROM transactions WHERE blockNumber = {}') ",
             num
         )),
         client.execute(format!(
-            "DELETE FROM arbitrumOne.events WHERE blockNumber = {}') ",
+            "DELETE FROM events WHERE blockNumber = {}') ",
             num
         )),
         client.execute(format!(
-            "DELETE FROM arbitrumOne.withdraws WHERE blockNumber = {}",
+            "DELETE FROM withdraws WHERE blockNumber = {}",
             num
         )),
         client.execute(format!(
-            "DELETE FROM arbitrumOne.traces WHERE blockNumber = {}",
+            "DELETE FROM traces WHERE blockNumber = {}",
             num
         )),
     )
@@ -166,11 +166,14 @@ pub async fn health_check(
     client: Client,
     provider: &Provider<Ws>,
     trace_provider: &Option<Provider<Http>>,
+    provider_type: ProviderType,
     num: u64,
 ) {
+    assert!(provider_type == ProviderType::Default, "unsupported provider type");
+
     let block = client
         .query_one::<BlockHashRow>(format!(
-            "SELECT hex(hash) FROM arbitrumOne.blocks WHERE number = {}",
+            "SELECT hex(hash) FROM blocks WHERE number = {}",
             num
         ))
         .await;
@@ -193,23 +196,23 @@ pub async fn health_check(
             );
             tokio::try_join!(
                 client.execute(format!(
-                    "DELETE FROM arbitrumOne.blocks WHERE number = {} ",
+                    "DELETE FROM blocks WHERE number = {} ",
                     num
                 )),
                 client.execute(format!(
-                    "DELETE FROM arbitrumOne.transactions WHERE blockNumber = {}') ",
+                    "DELETE FROM transactions WHERE blockNumber = {}') ",
                     num
                 )),
                 client.execute(format!(
-                    "DELETE FROM arbitrumOne.events WHERE blockNumber = {}') ",
+                    "DELETE FROM events WHERE blockNumber = {}') ",
                     num
                 )),
                 client.execute(format!(
-                    "DELETE FROM arbitrumOne.withdraws WHERE blockNumber = {}",
+                    "DELETE FROM withdraws WHERE blockNumber = {}",
                     num
                 )),
                 client.execute(format!(
-                    "DELETE FROM arbitrumOne.traces WHERE blockNumber = {}",
+                    "DELETE FROM traces WHERE blockNumber = {}",
                     num
                 ))
             )
@@ -222,7 +225,7 @@ pub async fn health_check(
             // check traces
             let block_trace_count = client
                 .query_one::<BlockTraceCountRaw>(format!(
-                    "SELECT count(*) as count FROM arbitrumOne.traces WHERE blockNumber = {}",
+                    "SELECT count(*) as count FROM traces WHERE blockNumber = {}",
                     num
                 ))
                 .await;
@@ -232,23 +235,23 @@ pub async fn health_check(
                         warn!("fix err block {}: no traces", num);
                         tokio::try_join!(
                             client.execute(format!(
-                                "DELETE FROM arbitrumOne.blocks WHERE number = {} ",
+                                "DELETE FROM blocks WHERE number = {} ",
                                 num
                             )),
                             client.execute(format!(
-                                "DELETE FROM arbitrumOne.transactions WHERE blockNumber = {}') ",
+                                "DELETE FROM transactions WHERE blockNumber = {}') ",
                                 num
                             )),
                             client.execute(format!(
-                                "DELETE FROM arbitrumOne.events WHERE blockNumber = {}') ",
+                                "DELETE FROM events WHERE blockNumber = {}') ",
                                 num
                             )),
                             client.execute(format!(
-                                "DELETE FROM arbitrumOne.withdraws WHERE blockNumber = {}",
+                                "DELETE FROM withdraws WHERE blockNumber = {}",
                                 num
                             )),
                             client.execute(format!(
-                                "DELETE FROM arbitrumOne.traces WHERE blockNumber = {}",
+                                "DELETE FROM traces WHERE blockNumber = {}",
                                 num
                             ))
                         )
@@ -271,6 +274,7 @@ async fn interval_health_check(
     client: Client,
     provider: &Provider<Ws>,
     trace_provider: &Option<Provider<Http>>,
+    provider_type: ProviderType,
 ) -> Result<(), Box<dyn Error>> {
     #[derive(Row, Clone, Debug)]
     struct MaxNumberRow {
@@ -279,7 +283,7 @@ async fn interval_health_check(
 
     debug!("start interval update");
     let local_height = client
-        .query_one::<MaxNumberRow>("SELECT max(number) as max FROM arbitrumOne.blocks")
+        .query_one::<MaxNumberRow>("SELECT max(number) as max FROM blocks")
         .await?;
     info!("local height {}", local_height.max);
     let latest: u64 = provider.get_block_number().await?.as_u64();
@@ -288,7 +292,7 @@ async fn interval_health_check(
     let from = latest - 100_000;
 
     for num in (from..=latest).rev() {
-        health_check(client.clone(), provider, trace_provider, num).await;
+        health_check(client.clone(), provider, trace_provider, provider_type, num).await;
     }
 
     Ok(())
@@ -298,6 +302,7 @@ pub(crate) async fn sync(
     db: String,
     provider_ws: String,
     provider_http: Option<String>,
+    provider_type: ProviderType,
 ) -> Result<(), Box<dyn Error>> {
     let clickhouse_url = Url::parse(&db).unwrap();
     // warn!("db: {} path: {}", format!("{}:{}", clickhouse_url.host().unwrap(), clickhouse_url.port().unwrap()), clickhouse_url.path());
@@ -307,7 +312,7 @@ pub(crate) async fn sync(
             ClientOptions {
                 username: clickhouse_url.username().to_string(),
                 password: clickhouse_url.password().unwrap_or("").to_string(),
-                default_database: clickhouse_url.path().to_string(),
+                default_database: clickhouse_url.path().to_string().strip_prefix('/').unwrap().to_string(),
             }
         } else {
             ClientOptions::default()
@@ -358,6 +363,7 @@ pub(crate) async fn sync(
             clickhouse_client_for_health,
             &provider_for_health,
             &trace_provider_for_health,
+            provider_type,
         )
         .await?;
     }

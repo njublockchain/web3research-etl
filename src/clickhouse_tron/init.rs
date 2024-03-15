@@ -38,7 +38,12 @@ pub(crate) async fn init(
         klickhouse::ClientOptions {
             username: clickhouse_url.username().to_string(),
             password: clickhouse_url.password().unwrap_or("").to_string(),
-            default_database: clickhouse_url.path().to_string(),
+            default_database: clickhouse_url
+                .path()
+                .to_string()
+                .strip_prefix('/')
+                .unwrap()
+                .to_string(),
         }
     } else {
         klickhouse::ClientOptions::default()
@@ -56,19 +61,15 @@ pub(crate) async fn init(
 
     debug!("start initializing schema");
     klient
-        .execute(
-            "
-        CREATE DATABASE IF NOT EXISTS tron;
-        ",
-        )
+        .execute(format!("CREATE DATABASE IF NOT EXISTS {}", options.default_database).as_str())
         .await?;
 
     klient
         .execute(
             "
-            -- tron.blocks definition
+            -- blocks definition
 
-            CREATE TABLE IF NOT EXISTS tron.blocks
+            CREATE TABLE IF NOT EXISTS blocks
             (
             
                 `hash` FixedString(32),
@@ -104,9 +105,9 @@ pub(crate) async fn init(
     klient
         .execute(
             "
-            -- tron.transactions definition
+            -- transactions definition
 
-            CREATE TABLE IF NOT EXISTS tron.transactions
+            CREATE TABLE IF NOT EXISTS transactions
             (
             
                 `hash` FixedString(32),
@@ -204,9 +205,9 @@ pub(crate) async fn init(
     klient
         .execute(
             "
-            -- tron.logs definition
+            -- logs definition
 
-            CREATE TABLE IF NOT EXISTS tron.logs
+            CREATE TABLE IF NOT EXISTS logs
             (
             
                 `blockNum` Int64,
@@ -236,9 +237,9 @@ pub(crate) async fn init(
     klient
         .execute(
             "
-            -- tron.logs definition
+            -- logs definition
 
-            CREATE TABLE IF NOT EXISTS tron.logs
+            CREATE TABLE IF NOT EXISTS logs
             (
             
                 `blockNum` Int64,
@@ -265,9 +266,9 @@ pub(crate) async fn init(
     klient
         .execute(
             "
-            -- tron.internals definition
+            -- internals definition
 
-            CREATE TABLE IF NOT EXISTS tron.internals
+            CREATE TABLE IF NOT EXISTS internals
             (
             
                 `blockNum` Int64,
@@ -302,9 +303,9 @@ pub(crate) async fn init(
     klient
         .execute(
             "
-            -- tron.orders definition
+            -- orders definition
 
-            CREATE TABLE IF NOT EXISTS tron.orders
+            CREATE TABLE IF NOT EXISTS orders
             (
             
                 `blockNum` Int64,
@@ -614,55 +615,52 @@ pub(crate) async fn init(
         if (num - from + 1) % batch == 0 {
             tokio::try_join!(
                 klient.insert_native_block(
-                    "INSERT INTO tron.blocks FORMAT native",
+                    "INSERT INTO blocks FORMAT native",
                     block_row_list.to_vec()
                 ),
                 klient.insert_native_block(
-                    "INSERT INTO tron.transactions FORMAT native",
+                    "INSERT INTO transactions FORMAT native",
                     transaction_row_list.to_vec()
                 ),
+                klient.insert_native_block("INSERT INTO logs FORMAT native", log_row_list.to_vec()),
                 klient.insert_native_block(
-                    "INSERT INTO tron.logs FORMAT native",
-                    log_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO tron.internals FORMAT native",
+                    "INSERT INTO internals FORMAT native",
                     internal_row_list.to_vec()
                 ),
                 klient.insert_native_block(
-                    "INSERT INTO tron.orders FORMAT native",
+                    "INSERT INTO orders FORMAT native",
                     order_detail_row_list.to_vec()
                 ),
                 klient.insert_native_block(
-                    "INSERT INTO tron.accountCreateContracts FORMAT native",
+                    "INSERT INTO accountCreateContracts FORMAT native",
                     account_create_contract_row_list.to_vec()
                 ),
                 klient.insert_native_block(
-                    "INSERT INTO tron.transferContracts FORMAT native",
+                    "INSERT INTO transferContracts FORMAT native",
                     transfer_contract_row_list.to_vec()
                 ),
                 klient.insert_native_block(
-                    "INSERT INTO tron.transferAssetContracts FORMAT native",
+                    "INSERT INTO transferAssetContracts FORMAT native",
                     transfer_asset_contract_row_list.to_vec()
                 ),
                 klient.insert_native_block(
-                    "INSERT INTO tron.freezeBalanceContracts FORMAT native",
+                    "INSERT INTO freezeBalanceContracts FORMAT native",
                     freeze_balance_contract_row_list.to_vec()
                 ),
                 klient.insert_native_block(
-                    "INSERT INTO tron.unfreezeBalanceContracts FORMAT native",
+                    "INSERT INTO unfreezeBalanceContracts FORMAT native",
                     unfreeze_balance_contract_row_list.to_vec()
                 ),
                 klient.insert_native_block(
-                    "INSERT INTO tron.triggerSmartContracts FORMAT native",
+                    "INSERT INTO triggerSmartContracts FORMAT native",
                     trigger_smart_contract_row_list.to_vec()
                 ),
                 klient.insert_native_block(
-                    "INSERT INTO tron.freezeBalanceV2Contracts FORMAT native",
+                    "INSERT INTO freezeBalanceV2Contracts FORMAT native",
                     freeze_balance_v2_contract_row_list.to_vec()
                 ),
                 klient.insert_native_block(
-                    "INSERT INTO tron.unfreezeBalanceV2Contracts FORMAT native",
+                    "INSERT INTO unfreezeBalanceV2Contracts FORMAT native",
                     unfreeze_balance_v2_contract_row_list.to_vec()
                 ),
             )
@@ -688,53 +686,50 @@ pub(crate) async fn init(
     }
 
     tokio::try_join!(
+        klient.insert_native_block("INSERT INTO blocks FORMAT native", block_row_list.to_vec()),
         klient.insert_native_block(
-            "INSERT INTO tron.blocks FORMAT native",
-            block_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO tron.transactions FORMAT native",
+            "INSERT INTO transactions FORMAT native",
             transaction_row_list.to_vec()
         ),
-        klient.insert_native_block("INSERT INTO tron.logs FORMAT native", log_row_list.to_vec()),
+        klient.insert_native_block("INSERT INTO logs FORMAT native", log_row_list.to_vec()),
         klient.insert_native_block(
-            "INSERT INTO tron.internals FORMAT native",
+            "INSERT INTO internals FORMAT native",
             internal_row_list.to_vec()
         ),
         klient.insert_native_block(
-            "INSERT INTO tron.orders FORMAT native",
+            "INSERT INTO orders FORMAT native",
             order_detail_row_list.to_vec()
         ),
         klient.insert_native_block(
-            "INSERT INTO tron.accountCreateContracts FORMAT native",
+            "INSERT INTO accountCreateContracts FORMAT native",
             account_create_contract_row_list.to_vec()
         ),
         klient.insert_native_block(
-            "INSERT INTO tron.transferContracts FORMAT native",
+            "INSERT INTO transferContracts FORMAT native",
             transfer_contract_row_list.to_vec()
         ),
         klient.insert_native_block(
-            "INSERT INTO tron.transferAssetContracts FORMAT native",
+            "INSERT INTO transferAssetContracts FORMAT native",
             transfer_asset_contract_row_list.to_vec()
         ),
         klient.insert_native_block(
-            "INSERT INTO tron.freezeBalanceContracts FORMAT native",
+            "INSERT INTO freezeBalanceContracts FORMAT native",
             freeze_balance_contract_row_list.to_vec()
         ),
         klient.insert_native_block(
-            "INSERT INTO tron.unfreezeBalanceContracts FORMAT native",
+            "INSERT INTO unfreezeBalanceContracts FORMAT native",
             unfreeze_balance_contract_row_list.to_vec()
         ),
         klient.insert_native_block(
-            "INSERT INTO tron.triggerSmartContracts FORMAT native",
+            "INSERT INTO triggerSmartContracts FORMAT native",
             trigger_smart_contract_row_list.to_vec()
         ),
         klient.insert_native_block(
-            "INSERT INTO tron.freezeBalanceV2Contracts FORMAT native",
+            "INSERT INTO freezeBalanceV2Contracts FORMAT native",
             freeze_balance_v2_contract_row_list.to_vec()
         ),
         klient.insert_native_block(
-            "INSERT INTO tron.unfreezeBalanceV2Contracts FORMAT native",
+            "INSERT INTO unfreezeBalanceV2Contracts FORMAT native",
             unfreeze_balance_v2_contract_row_list.to_vec()
         ),
     )

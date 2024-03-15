@@ -69,23 +69,23 @@ async fn insert_block(
 
     tokio::try_join!(
         client.insert_native_block(
-            "INSERT INTO arbitrumNova.blocks FORMAT native",
+            "INSERT INTO blocks FORMAT native",
             block_row_list
         ),
         client.insert_native_block(
-            "INSERT INTO arbitrumNova.transactions FORMAT native",
+            "INSERT INTO transactions FORMAT native",
             transaction_row_list
         ),
         client.insert_native_block(
-            "INSERT INTO arbitrumNova.events FORMAT native",
+            "INSERT INTO events FORMAT native",
             event_row_list
         ),
         client.insert_native_block(
-            "INSERT INTO arbitrumNova.withdraws FORMAT native",
+            "INSERT INTO withdraws FORMAT native",
             withdraw_row_list
         ),
         client.insert_native_block(
-            "INSERT INTO arbitrumNova.traces FORMAT native",
+            "INSERT INTO traces FORMAT native",
             trace_row_list
         )
     )?;
@@ -103,23 +103,23 @@ async fn handle_block(
     let num = block.number.unwrap().as_u64();
     tokio::try_join!(
         client.execute(format!(
-            "DELETE FROM arbitrumNova.blocks WHERE number = {} ",
+            "DELETE FROM blocks WHERE number = {} ",
             num
         )),
         client.execute(format!(
-            "DELETE FROM arbitrumNova.transactions WHERE blockNumber = {}') ",
+            "DELETE FROM transactions WHERE blockNumber = {}') ",
             num
         )),
         client.execute(format!(
-            "DELETE FROM arbitrumNova.events WHERE blockNumber = {}') ",
+            "DELETE FROM events WHERE blockNumber = {}') ",
             num
         )),
         client.execute(format!(
-            "DELETE FROM arbitrumNova.withdraws WHERE blockNumber = {}",
+            "DELETE FROM withdraws WHERE blockNumber = {}",
             num
         )),
         client.execute(format!(
-            "DELETE FROM arbitrumNova.traces WHERE blockNumber = {}",
+            "DELETE FROM traces WHERE blockNumber = {}",
             num
         )),
     )
@@ -172,7 +172,7 @@ pub async fn health_check(
 ) {
     let block = client
         .query_one::<BlockHashRow>(format!(
-            "SELECT hex(hash) FROM arbitrumNova.blocks WHERE number = {}",
+            "SELECT hex(hash) FROM blocks WHERE number = {}",
             num
         ))
         .await;
@@ -195,23 +195,23 @@ pub async fn health_check(
             );
             tokio::try_join!(
                 client.execute(format!(
-                    "DELETE FROM arbitrumNova.blocks WHERE number = {} ",
+                    "DELETE FROM blocks WHERE number = {} ",
                     num
                 )),
                 client.execute(format!(
-                    "DELETE FROM arbitrumNova.transactions WHERE blockNumber = {}') ",
+                    "DELETE FROM transactions WHERE blockNumber = {}') ",
                     num
                 )),
                 client.execute(format!(
-                    "DELETE FROM arbitrumNova.events WHERE blockNumber = {}') ",
+                    "DELETE FROM events WHERE blockNumber = {}') ",
                     num
                 )),
                 client.execute(format!(
-                    "DELETE FROM arbitrumNova.withdraws WHERE blockNumber = {}",
+                    "DELETE FROM withdraws WHERE blockNumber = {}",
                     num
                 )),
                 client.execute(format!(
-                    "DELETE FROM arbitrumNova.traces WHERE blockNumber = {}",
+                    "DELETE FROM traces WHERE blockNumber = {}",
                     num
                 ))
             )
@@ -224,7 +224,7 @@ pub async fn health_check(
             // check traces
             let block_trace_count = client
                 .query_one::<BlockTraceCountRaw>(format!(
-                    "SELECT count(*) as count FROM arbitrumNova.traces WHERE blockNumber = {}",
+                    "SELECT count(*) as count FROM traces WHERE blockNumber = {}",
                     num
                 ))
                 .await;
@@ -234,23 +234,23 @@ pub async fn health_check(
                         warn!("fix err block {}: no traces", num);
                         tokio::try_join!(
                             client.execute(format!(
-                                "DELETE FROM arbitrumNova.blocks WHERE number = {} ",
+                                "DELETE FROM blocks WHERE number = {} ",
                                 num
                             )),
                             client.execute(format!(
-                                "DELETE FROM arbitrumNova.transactions WHERE blockNumber = {}') ",
+                                "DELETE FROM transactions WHERE blockNumber = {}') ",
                                 num
                             )),
                             client.execute(format!(
-                                "DELETE FROM arbitrumNova.events WHERE blockNumber = {}') ",
+                                "DELETE FROM events WHERE blockNumber = {}') ",
                                 num
                             )),
                             client.execute(format!(
-                                "DELETE FROM arbitrumNova.withdraws WHERE blockNumber = {}",
+                                "DELETE FROM withdraws WHERE blockNumber = {}",
                                 num
                             )),
                             client.execute(format!(
-                                "DELETE FROM arbitrumNova.traces WHERE blockNumber = {}",
+                                "DELETE FROM traces WHERE blockNumber = {}",
                                 num
                             ))
                         )
@@ -282,7 +282,7 @@ async fn interval_health_check(
 
     debug!("start interval update");
     let local_height = client
-        .query_one::<MaxNumberRow>("SELECT max(number) as max FROM arbitrumNova.blocks")
+        .query_one::<MaxNumberRow>("SELECT max(number) as max FROM blocks")
         .await?;
     info!("local height {}", local_height.max);
     let latest: u64 = provider.get_block_number().await?.as_u64();
@@ -311,7 +311,7 @@ pub(crate) async fn sync(
             ClientOptions {
                 username: clickhouse_url.username().to_string(),
                 password: clickhouse_url.password().unwrap_or("").to_string(),
-                default_database: clickhouse_url.path().to_string(),
+                default_database: clickhouse_url.path().to_string().strip_prefix('/').unwrap().to_string(),
             }
         } else {
             ClientOptions::default()

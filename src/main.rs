@@ -28,7 +28,7 @@ pub enum ClapActionType {
         #[arg(short, long, value_enum, default_value_t = SupportedChain::Ethereum)]
         chain: SupportedChain,
 
-        #[arg(long, default_value = "clickhouse://localhost:9000")]
+        #[arg(long, default_value = "clickhouse://localhost:9000/[chain]")]
         db: String,
 
         #[arg(short, long, default_value = "ws://localhost:8545")]
@@ -54,7 +54,7 @@ pub enum ClapActionType {
         #[arg(short, long, value_enum, default_value_t = SupportedChain::Ethereum)]
         chain: SupportedChain,
 
-        #[arg(long, default_value = "clickhouse://localhost:9000")]
+        #[arg(long, default_value = "clickhouse://localhost:9000/[chain]")]
         db: String,
 
         #[arg(short, long, default_value = "ws://localhost:8545")]
@@ -76,7 +76,7 @@ pub enum ClapActionType {
         #[arg(short, long, value_enum, default_value_t = SupportedChain::Ethereum)]
         chain: SupportedChain,
 
-        #[arg(long, default_value = "clickhouse://default@localhost:9000")]
+        #[arg(long, default_value = "clickhouse://default@localhost:9000/[chain]")]
         db: String,
 
         #[arg(short, long, default_value = "ws://localhost:8545")]
@@ -123,14 +123,26 @@ async fn main() -> Result<(), Box<dyn Error>> {
             provider_type,
         } => match chain {
             SupportedChain::Bitcoin => {
+                let chain_name = "bitcoin";
+                let provider = provider.replace("[chain]", chain_name);
+                let trace_provider = trace_provider.map(|x| x.replace("[chain]", chain_name));
+
                 clickhouse_btc::init::init(db, provider, provider_type, from, batch).await?
             }
             SupportedChain::Ethereum => {
+                let chain_name = "ethereum";
+                let provider = provider.replace("[chain]", chain_name);
+                let trace_provider = trace_provider.map(|x| x.replace("[chain]", chain_name));
+
                 clickhouse_eth::init::init(db, provider, trace_provider, provider_type, from, batch)
                     .await?
             }
             SupportedChain::Tron => clickhouse_tron::init::init(db, provider, from, batch).await?,
             SupportedChain::ArbitrumOne => {
+                let chain_name = "arbitrum-one";
+                let provider = provider.replace("[chain]", chain_name);
+                let trace_provider = trace_provider.map(|x| x.replace("[chain]", chain_name));
+
                 clickhouse_arb_one::init::init(
                     db,
                     provider,
@@ -142,6 +154,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .await?
             }
             SupportedChain::ArbitrumNova => {
+                let chain_name = "arbitrum-nova";
+                let provider = provider.replace("[chain]", chain_name);
+                let trace_provider = trace_provider.map(|x| x.replace("[chain]", chain_name));
+
                 clickhouse_arb_nova::init::init(
                     db,
                     provider,
@@ -153,6 +169,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .await?
             }
             SupportedChain::Polygon => {
+                let chain_name = "polygon";
+                let provider = provider.replace("[chain]", chain_name);
+                let trace_provider = trace_provider.map(|x| x.replace("[chain]", chain_name));
+
                 clickhouse_polygon::init::init(
                     db,
                     provider,
@@ -171,14 +191,22 @@ async fn main() -> Result<(), Box<dyn Error>> {
             trace_provider,
             provider_type,
         } => match chain {
-            SupportedChain::Bitcoin => {}
+            SupportedChain::Bitcoin => todo!(),
             SupportedChain::Ethereum => {
+                let chain_name = "ethereum";
+                let provider = provider.replace("[chain]", chain_name);
+                let trace_provider = trace_provider.map(|x| x.replace("[chain]", chain_name));
+
                 clickhouse_eth::sync::sync(db, provider, trace_provider, provider_type).await?
             }
-            SupportedChain::Tron => {}
+            SupportedChain::Tron => todo!(),
             SupportedChain::ArbitrumOne => todo!(),
             SupportedChain::ArbitrumNova => todo!(),
             SupportedChain::Polygon => {
+                let chain_name = "polygon";
+                let provider = provider.replace("[chain]", chain_name);
+                let trace_provider = trace_provider.map(|x| x.replace("[chain]", chain_name));
+
                 clickhouse_polygon::sync::sync(db, provider, trace_provider, provider_type).await?
             }
         },
@@ -191,10 +219,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
             provider_type,
         } => match chain {
             SupportedChain::Bitcoin => {
+                let chain_name = "bitcoin";
+                let provider = provider.replace("[chain]", chain_name);
+                let trace_provider = trace_provider.map(|x| x.replace("[chain]", chain_name));
+
                 clickhouse_btc::check::check(db, provider, trace_provider, provider_type, from)
                     .await?;
             }
             SupportedChain::Ethereum => {
+                let chain_name = "ethereum";
+                let provider = provider.replace("[chain]", chain_name);
+                let trace_provider = trace_provider.map(|x| x.replace("[chain]", chain_name));
+
                 clickhouse_eth::check::check(db, provider, trace_provider, provider_type, from)
                     .await?;
             }
@@ -202,6 +238,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
             SupportedChain::ArbitrumOne => {}
             SupportedChain::ArbitrumNova => {}
             SupportedChain::Polygon => {
+                let chain_name = "polygon";
+                let provider = provider.replace("[chain]", chain_name);
+                let trace_provider = trace_provider.map(|x| x.replace("[chain]", chain_name));
+
                 clickhouse_polygon::check::check(db, provider, trace_provider, provider_type, from)
                     .await?;
             }

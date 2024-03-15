@@ -97,15 +97,15 @@ async fn insert_block(
 
     tokio::try_join!(
         client.insert_native_block(
-            "INSERT INTO bitcoin.blocks FORMAT native",
+            "INSERT INTO blocks FORMAT native",
             block_row_list.to_vec()
         ),
         client.insert_native_block(
-            "INSERT INTO bitcoin.inputs FORMAT native",
+            "INSERT INTO inputs FORMAT native",
             input_row_list.to_vec()
         ),
         client.insert_native_block(
-            "INSERT INTO bitcoin.outputs FORMAT native",
+            "INSERT INTO outputs FORMAT native",
             output_row_list.to_vec()
         ),
     )
@@ -132,7 +132,7 @@ pub async fn health_check(
 ) {
     let block = client
         .query_one::<BlockHashRow>(format!(
-            "SELECT hex(hash) FROM bitcoin.blocks WHERE height = {}",
+            "SELECT hex(hash) FROM blocks WHERE height = {}",
             num
         ))
         .await;
@@ -162,15 +162,15 @@ pub async fn health_check(
             );
             tokio::try_join!(
                 client.execute(format!(
-                    "DELETE FROM bitcoin.blocks WHERE height = {} ",
+                    "DELETE FROM blocks WHERE height = {} ",
                     num
                 )),
                 client.execute(format!(
-                    "DELETE FROM bitcoin.inputs WHERE blockHeight = {}') ",
+                    "DELETE FROM inputs WHERE blockHeight = {}') ",
                     num
                 )),
                 client.execute(format!(
-                    "DELETE FROM bitcoin.outputs WHERE blockHeight = {}') ",
+                    "DELETE FROM outputs WHERE blockHeight = {}') ",
                     num
                 )),
             )

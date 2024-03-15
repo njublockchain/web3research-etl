@@ -1,5 +1,5 @@
 pub const ACCOUNT_CREATE_CONTRACT_DDL: &str = "
-CREATE TABLE IF NOT EXISTS tron.accountCreateContracts
+CREATE TABLE IF NOT EXISTS accountCreateContracts
 (
     `blockNum` Int64,
     `transactionHash` FixedString(32),
@@ -15,7 +15,7 @@ ORDER BY (transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
 ";
 pub const TRANSFER_CONTRACT_DDL: &str = "
-CREATE TABLE IF NOT EXISTS tron.transferContracts
+CREATE TABLE IF NOT EXISTS transferContracts
 (
     `blockNum` Int64,
     `transactionHash` FixedString(32),
@@ -31,7 +31,7 @@ ORDER BY (transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
 ";
 pub const TRANSFER_ASSET_CONTRACT_DDL: &str = "
-CREATE TABLE IF NOT EXISTS tron.transferAssetContracts
+CREATE TABLE IF NOT EXISTS transferAssetContracts
 (
     `blockNum` Int64,
     `transactionHash` FixedString(32),
@@ -48,7 +48,7 @@ ORDER BY (transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
 ";
 pub const FREEZE_BALANCE_CONTRACT_DDL: &str = "
-CREATE TABLE IF NOT EXISTS tron.freezeBalanceContracts 
+CREATE TABLE IF NOT EXISTS freezeBalanceContracts 
 (
     `blockNum` Int64,
     `transactionHash` FixedString(32),
@@ -66,7 +66,7 @@ ORDER BY (transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
 ";
 pub const UNFREEZE_BALANCE_CONTRACT_DDL: &str = "
-CREATE TABLE IF NOT EXISTS tron.unfreezeBalanceContracts
+CREATE TABLE IF NOT EXISTS unfreezeBalanceContracts
 (
     `blockNum` Int64,
     `transactionHash` FixedString(32),
@@ -82,7 +82,7 @@ ORDER BY (transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
 ";
 pub const TRIGGER_SMART_CONTRACT_DDL: &str = "
-CREATE TABLE IF NOT EXISTS tron.triggerSmartContracts
+CREATE TABLE IF NOT EXISTS triggerSmartContracts
 (
     `blockNum` Int64,
     `transactionHash` FixedString(32),
@@ -101,7 +101,7 @@ ORDER BY (transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
 ";
 pub const FREEZE_BALANCE_V2_CONTRACT_DDL: &str = "
-CREATE TABLE IF NOT EXISTS tron.freezeBalanceV2Contracts
+CREATE TABLE IF NOT EXISTS freezeBalanceV2Contracts
 (
     `blockNum` Int64,
     `transactionHash` FixedString(32),
@@ -117,7 +117,7 @@ ORDER BY (transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
 ";
 pub const UNFREEZE_BALANCE_V2_CONTRACT_DDL: &str = "
-CREATE TABLE IF NOT EXISTS tron.unfreezeBalanceV2Contracts
+CREATE TABLE IF NOT EXISTS unfreezeBalanceV2Contracts
 (
     `blockNum` Int64,
     `transactionHash` FixedString(32),
