@@ -218,16 +218,15 @@ pub(crate) async fn init(
             
                 `address` FixedString(34),
             
-                topic0 Nullable(FixedString(32)),
-                topic1 Nullable(FixedString(32)),
-                topic2 Nullable(FixedString(32)),
-                topic3 Nullable(FixedString(32)),
+                topic0 String DEFAULT '',
+                topic1 String DEFAULT '',
+                topic2 String DEFAULT '',
+                topic3 String DEFAULT '',
             
                 `data` String
             )
             ENGINE = ReplacingMergeTree
-            ORDER BY (transactionHash,
-             logIndex)
+            ORDER BY (topic0, topic1, topic2, topic3, blockNum, transactionHash, logIndex)
             SETTINGS index_granularity = 8192;
         ",
         )

@@ -197,22 +197,47 @@ pub(crate) async fn init(
     klient
         .execute(
             "
-        CREATE TABLE IF NOT EXISTS events (
-            address FixedString(20),
-            blockHash FixedString(32),
-            blockNumber UInt64,
-            blockTimestamp UInt256,
-            transactionHash FixedString(32),
-            transactionIndex UInt64,
-            logIndex UInt256,
-            removed Boolean,
-            topic0 Nullable(FixedString(32)),
-            topic1 Nullable(FixedString(32)),
-            topic2 Nullable(FixedString(32)),
-            topic3 Nullable(FixedString(32)),
-            data String,
-        ) ENGINE=ReplacingMergeTree
-        ORDER BY (transactionHash, logIndex);
+            -- events definition
+
+            CREATE TABLE events
+            (
+            
+                `address` FixedString(20),
+            
+                `blockHash` FixedString(32),
+            
+                `blockNumber` UInt64,
+            
+                `blockTimestamp` UInt256,
+            
+                `transactionHash` FixedString(32),
+            
+                `transactionIndex` UInt64,
+            
+                `logIndex` UInt256,
+            
+                `removed` Bool,
+            
+                `topic0` String DEFAULT '',
+            
+                `topic1` String DEFAULT '',
+            
+                `topic2` String DEFAULT '',
+            
+                `topic3` String DEFAULT '',
+            
+                `data` String
+            )
+            ENGINE = ReplacingMergeTree
+            ORDER BY (removed,
+             address,
+             topic0,
+             topic1,
+             topic2,
+             topic3,
+             transactionHash,
+             logIndex)
+            SETTINGS index_granularity = 8192;
         ",
         )
         .await
