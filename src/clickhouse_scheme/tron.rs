@@ -281,10 +281,10 @@ pub struct LogRow {
     pub log_index: i32,
     pub address: String,
     
-    pub topic0: Option<Bytes>,
-    pub topic1: Option<Bytes>,
-    pub topic2: Option<Bytes>,
-    pub topic3: Option<Bytes>,
+    pub topic0: Bytes,
+    pub topic1: Bytes,
+    pub topic2: Bytes,
+    pub topic3: Bytes,
 
     pub data: Bytes,
 }
@@ -302,10 +302,10 @@ impl LogRow {
             transaction_hash: Bytes(transaction_hash),
             log_index,
             address: t_addr_from_21(log.address.clone()),
-            topic0: topics.get(0).cloned(),
-            topic1: topics.get(1).cloned(),
-            topic2: topics.get(2).cloned(),
-            topic3: topics.get(3).cloned(),
+            topic0: topics.get(0).cloned().unwrap_or_default(),
+            topic1: topics.get(1).cloned().unwrap_or_default(),
+            topic2: topics.get(2).cloned().unwrap_or_default(),
+            topic3: topics.get(3).cloned().unwrap_or_default(),
             data: Bytes(log.data.clone()),
         }
     }
