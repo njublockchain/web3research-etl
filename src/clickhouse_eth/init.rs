@@ -190,13 +190,11 @@ pub(crate) async fn init(
             root              Nullable(FixedString(32)) COMMENT 'Only present before activation of [EIP-658]',
             status            Nullable(UInt64) COMMENT 'Only present after activation of [EIP-658]'
         ) ENGINE=ReplacingMergeTree
-        ORDER BY hash;
+        ORDER BY (blockNumber, blockTimestamp, blockHash, from, nonce, to, transactionIndex, hash);
         ").await.unwrap();
     klient
         .execute(
             "
-            -- events definition
-
             CREATE TABLE events
             (
             
@@ -216,13 +214,13 @@ pub(crate) async fn init(
             
                 `removed` Bool,
             
-                `topic0` String DEFAULT '',
+                `topic0` Nullable(FixedString(32)),
             
-                `topic1` String DEFAULT '',
+                `topic1` Nullable(FixedString(32)),
             
-                `topic2` String DEFAULT '',
+                `topic2` Nullable(FixedString(32)),
             
-                `topic3` String DEFAULT '',
+                `topic3` Nullable(FixedString(32)),
             
                 `data` String
             )
@@ -235,7 +233,7 @@ pub(crate) async fn init(
              topic3,
              transactionHash,
              logIndex)
-            SETTINGS index_granularity = 8192;
+            SETTINGS index_granularity = 8192, allow_nullable_key=1;
         ",
         )
         .await
