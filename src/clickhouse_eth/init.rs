@@ -195,7 +195,7 @@ pub(crate) async fn init(
     klient
         .execute(
             "
-            CREATE TABLE events
+            CREATE TABLE IF NOT EXISTS events
             (
             
                 `address` FixedString(20),

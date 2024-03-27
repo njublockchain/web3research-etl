@@ -199,7 +199,7 @@ pub(crate) async fn init(
             "
             -- events definition
 
-            CREATE TABLE events
+            CREATE TABLE IF NOT EXISTS events
             (
             
                 `address` FixedString(20),
