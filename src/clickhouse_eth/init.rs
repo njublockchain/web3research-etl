@@ -190,7 +190,8 @@ pub(crate) async fn init(
             root              Nullable(FixedString(32)) COMMENT 'Only present before activation of [EIP-658]',
             status            Nullable(UInt64) COMMENT 'Only present after activation of [EIP-658]'
         ) ENGINE=ReplacingMergeTree
-        ORDER BY (blockNumber, blockTimestamp, blockHash, from, nonce, to, transactionIndex, hash);
+        ORDER BY (blockNumber, blockTimestamp, blockHash, from, nonce, to, transactionIndex, hash)
+        SETTINGS index_granularity = 8192, allow_nullable_key=1;
         ").await.unwrap();
     klient
         .execute(
