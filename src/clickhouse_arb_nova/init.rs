@@ -218,14 +218,11 @@ pub(crate) async fn init(
             
                 `removed` Bool,
             
-                `topic0` String DEFAULT '',
-            
-                `topic1` String DEFAULT '',
-            
-                `topic2` String DEFAULT '',
-            
-                `topic3` String DEFAULT '',
-            
+                `topic0` Nullable(FixedString(32)),
+                `topic1` Nullable(FixedString(32)),
+                `topic2` Nullable(FixedString(32)),
+                `topic3` Nullable(FixedString(32)),
+                
                 `data` String
             )
             ENGINE = ReplacingMergeTree
