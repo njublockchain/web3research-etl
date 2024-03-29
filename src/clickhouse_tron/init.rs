@@ -218,45 +218,16 @@ pub(crate) async fn init(
             
                 `address` FixedString(34),
             
-                topic0 String DEFAULT '',
-                topic1 String DEFAULT '',
-                topic2 String DEFAULT '',
-                topic3 String DEFAULT '',
+                topic0 Nullable(FixedString(32)),
+                topic1 Nullable(FixedString(32)),
+                topic2 Nullable(FixedString(32)),
+                topic3 Nullable(FixedString(32)),
             
                 `data` String
             )
             ENGINE = ReplacingMergeTree
             ORDER BY (topic0, topic1, topic2, topic3, blockNum, transactionHash, logIndex)
-            SETTINGS index_granularity = 8192;
-        ",
-        )
-        .await
-        .unwrap();
-
-    klient
-        .execute(
-            "
-            -- logs definition
-
-            CREATE TABLE IF NOT EXISTS logs
-            (
-            
-                `blockNum` Int64,
-            
-                `transactionHash` FixedString(32),
-            
-                `logIndex` Int32,
-            
-                `address` FixedString(34),
-            
-                `topics` Array(FixedString(32)),
-            
-                `data` String
-            )
-            ENGINE = ReplacingMergeTree
-            ORDER BY (transactionHash,
-             logIndex)
-            SETTINGS index_granularity = 8192;
+            SETTINGS index_granularity = 8192, allow_nullable_key=1;
         ",
         )
         .await
