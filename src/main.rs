@@ -12,7 +12,8 @@ use std::error::Error;
 
 extern crate pretty_env_logger;
 
-/// Simple program to greet a person
+/// Web3Research-ETL is a multichain-supported data ETL kit used on https://web3resear.ch
+/// If you find any bugs or have any suggestions, please feel free to open an issue on http://github.com/njublockchain/web3research-etl/issues
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 pub struct Args {
@@ -24,70 +25,79 @@ pub struct Args {
 #[derive(clap::Subcommand, PartialEq, Eq, Debug)]
 pub enum ClapActionType {
     Init {
-        /// Name of the person to greet
+        /// The chain to initialize
         #[arg(short, long, value_enum, default_value_t = SupportedChain::Ethereum)]
         chain: SupportedChain,
 
+        /// The ClickHouse database DSN, [chain] will be replaced by the chain name
         #[arg(long, default_value = "clickhouse://localhost:9000/[chain]")]
         db: String,
 
+        /// The provider URI of the chain's RPC node
         #[arg(short, long, default_value = "ws://localhost:8545")]
         provider: String,
 
-        /// provider uri for init trace, can be null when blockchain not requiring trace data
+        /// The provider URI of the chain's RPC node for init trace, can be null when trace data is not needed
         #[arg(long = "trace", default_value = None)]
         trace_provider: Option<String>,
 
+        /// The provider type, default is the official provider, e.g. geth and bitcoind
         #[arg(long, value_enum, default_value_t = ProviderType::Default )]
         provider_type: ProviderType,
 
-        /// from block
+        /// The block number to start from
         #[arg(long, default_value_t = 0)]
         from: u64,
 
-        /// init batch size
+        /// The batch size while initializing
         #[arg(long, default_value_t = 1u64)]
         batch: u64,
     },
     Sync {
-        /// Name of the person to greet
+        /// The chain to synchronize
         #[arg(short, long, value_enum, default_value_t = SupportedChain::Ethereum)]
         chain: SupportedChain,
 
+        /// The ClickHouse database DSN, [chain] will be replaced by the chain name
         #[arg(long, default_value = "clickhouse://localhost:9000/[chain]")]
         db: String,
 
+        /// The provider URI of the chain's RPC node
         #[arg(short, long, default_value = "ws://localhost:8545")]
         provider: String,
 
-        /// provider uri for sync trace
+        /// You can provide a trace provider to get the trace data, can be null when trace data is not needed
         #[arg(long = "trace", default_value = None)]
         trace_provider: Option<String>,
 
+        /// The provider type, default is the official provider, e.g. geth and bitcoind
         #[arg(long, value_enum, default_value_t = ProviderType::Default )]
         provider_type: ProviderType,
     },
     Check {
-        /// from block
-        #[arg(long, default_value_t = 0)]
-        from: u64,
-
-        /// Name of the person to greet
+        /// The chain to check the errors or missing data
         #[arg(short, long, value_enum, default_value_t = SupportedChain::Ethereum)]
         chain: SupportedChain,
 
+        /// The ClickHouse database DSN, [chain] will be replaced by the chain name
         #[arg(long, default_value = "clickhouse://default@localhost:9000/[chain]")]
         db: String,
 
+        /// The provider URI of the chain's RPC node
         #[arg(short, long, default_value = "ws://localhost:8545")]
         provider: String,
 
-        /// provider uri for sync trace
+        /// The provider URI of the chain's RPC node for init trace, can be null when trace data is not needed
         #[arg(long = "trace", default_value = None)]
         trace_provider: Option<String>,
 
+        /// The provider type, default is the official non-archive-optimised provider, e.g. geth and bitcoind
         #[arg(long, value_enum, default_value_t = ProviderType::Default )]
         provider_type: ProviderType,
+
+        /// The block number to start from
+        #[arg(long, default_value_t = 0)]
+        from: u64,
     },
 }
 

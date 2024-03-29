@@ -1,10 +1,14 @@
-# KylinKit
+# Web3Research-ETL
 
-kylinkit (= Kylink Kit) is a multi-chain data ETL tool used on [Kylink Platform](https://kylink.xyz)
+`web3research-etl` is a multichain-supported data ETL kit used on [Web3Research Platform](https://web3resear.ch)
 
 ## Usage
 
-- Install Latest rust lang
-- Clone the repo `git clone https://github.com/njublockchain/kylinkit && cd kylinkit`
-- Build the executable `cargo build --release`
-- Run the executable `./target/release/kylinkit -h`
+1. Install the latest [Rustlang](https://www.rust-lang.org/tools/install)
+2. Clone the repo `git clone https://github.com/njublockchain/web3research-etl && cd web3research-etl`
+3. Build the executable `cargo build --release`
+4. Run the executable `./target/release/web3research-etl -h`
+
+## Examples
+
+
