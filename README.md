@@ -2,7 +2,26 @@
 
 `web3research-etl` is a multichain-supported data ETL kit used on [Web3Research Platform](https://web3resear.ch)
 
-## Usage
+## Supported Chains
+
+✅: working perfect
+❎: looking good but not work, temporarily
+🚧: working in progress, coming soon
+
+| Chain | `init` | `sync` | `check` |
+| --- | --- | --- | --- |
+| Ethereum | ✅ | ✅ | ✅ |  |
+| Bitcoin | ✅ | ❎ | ❎ |  |
+| Tron | ✅ | ❎ | ❎ |
+| Arbitrum One | ✅ | ❎ | ❎ |
+| Arbitrum Nova | ✅ | ❎ | ❎ |
+| Polygon | ✅ | ❎ | ❎ |
+| BNB Smart Chain | 🚧 | 🚧 | 🚧 |
+| Solana | 🚧 | 🚧 | 🚧 |
+| Near | 🚧 | 🚧 | 🚧 |
+| The Open Network | 🚧 | 🚧 | 🚧 |
+
+## Install
 
 1. Install the latest [Rustlang](https://www.rust-lang.org/tools/install)
 2. Clone the repo `git clone https://github.com/njublockchain/web3research-etl && cd web3research-etl`
