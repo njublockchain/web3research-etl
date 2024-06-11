@@ -655,7 +655,7 @@ pub(crate) async fn init(
                     "INSERT INTO transactions FORMAT native",
                     transaction_row_list.to_vec()
                 ),
-                klient.insert_native_block("INSERT INTO logs FORMAT native", log_row_list.to_vec()),
+                klient.insert_native_block("INSERT INTO events FORMAT native", log_row_list.to_vec()),
                 klient.insert_native_block(
                     "INSERT INTO internals FORMAT native",
                     internal_row_list.to_vec()
@@ -847,7 +847,7 @@ pub(crate) async fn init(
             "INSERT INTO transactions FORMAT native",
             transaction_row_list.to_vec()
         ),
-        klient.insert_native_block("INSERT INTO logs FORMAT native", log_row_list.to_vec()),
+        klient.insert_native_block("INSERT INTO events FORMAT native", log_row_list.to_vec()),
         klient.insert_native_block(
             "INSERT INTO internals FORMAT native",
             internal_row_list.to_vec()

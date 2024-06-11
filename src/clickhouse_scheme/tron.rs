@@ -396,7 +396,7 @@ impl TransactionRow {
     }
 }
 
-/** CREATE TABLE IF NOT EXISTS logs
+/** CREATE TABLE IF NOT EXISTS events
 (
     `blockNum` Int64,
     `transactionHash` FixedString(32),
