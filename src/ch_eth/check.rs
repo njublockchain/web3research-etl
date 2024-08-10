@@ -5,7 +5,7 @@ use klickhouse::{Client, ClientOptions, Row};
 use log::{debug, info};
 use url::Url;
 
-use crate::{clickhouse_eth::sync::health_check, ProviderType};
+use crate::{ch_eth::sync::health_check, ProviderType};
 
 pub(crate) async fn check(
     db: String,

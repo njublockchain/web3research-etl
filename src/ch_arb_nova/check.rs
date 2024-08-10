@@ -5,12 +5,12 @@ use klickhouse::{Client, ClientOptions, Row};
 use log::{debug, info};
 use url::Url;
 
-use crate::{clickhouse_polygon::sync::health_check, ProviderType};
+use crate::{ch_arb_nova::sync::health_check, ProviderType};
 
 pub(crate) async fn check(
     db: String,
-    provider_uri: String,
-    trace_provider_uri: Option<String>,
+    provider_ws: String,
+    provider_http: Option<String>,
     provider_type: ProviderType,
     from: u64,
 ) -> Result<(), Box<dyn Error>> {
@@ -30,9 +30,11 @@ pub(crate) async fn check(
 
     debug!("start listening");
 
-    let provider = Provider::<Ws>::connect(&provider_uri).await?;
-    let trace_provider = trace_provider_uri
-        .map(|trace_provider_uri| Provider::try_from(&trace_provider_uri).unwrap());
+
+    let provider_ws = Provider::<Ws>::connect(provider_ws).await?;
+    let provider_http =
+        provider_http.map(|provider_http| Provider::try_from(provider_http).unwrap());
+
 
     let client = Client::connect(
         format!(
@@ -54,12 +56,12 @@ pub(crate) async fn check(
         .query_one::<MaxNumberRow>("SELECT max(number) as max FROM blocks")
         .await?;
     info!("local height {}", local_height.max);
-    let latest: u64 = provider.get_block_number().await?.as_u64();
+    let latest: u64 = provider_ws.get_block_number().await?.as_u64();
     info!("updating to height {}", latest);
     // let from = local_height.max + 1;
 
     for num in from..=latest {
-        health_check(client.clone(), &provider, &trace_provider, provider_type, num).await;
+        health_check(client.clone(), &provider_ws, &provider_http, provider_type, num).await;
     }
 
     Ok(())

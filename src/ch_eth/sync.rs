@@ -12,9 +12,10 @@ use tokio_retry::{
 };
 use url::Url;
 
-use crate::{clickhouse_scheme::polygon::{
-    BlockRow, EventRow, TraceRow, TransactionRow, WithdrawalRow,
-}, ProviderType};
+use crate::{
+    ch_eth::schema::{BlockRow, EventRow, TraceRow, TransactionRow, WithdrawalRow},
+    ProviderType,
+};
 
 use super::init::get_block_details;
 
@@ -34,7 +35,14 @@ async fn insert_block(
 
     let (block, receipts, traces) = Retry::spawn(
         ExponentialBackoff::from_millis(100).map(jitter).take(3),
-        || get_block_details(provider, trace_provider, provider_type==ProviderType::Erigon, block_number),
+        || {
+            get_block_details(
+                provider,
+                trace_provider,
+                provider_type == ProviderType::Erigon,
+                block_number,
+            )
+        },
     )
     .await?;
 
@@ -74,10 +82,7 @@ async fn insert_block(
             transaction_row_list
         ),
         client.insert_native_block("INSERT INTO events FORMAT native", event_row_list),
-        client.insert_native_block(
-            "INSERT INTO withdraws FORMAT native",
-            withdraw_row_list
-        ),
+        client.insert_native_block("INSERT INTO withdraws FORMAT native", withdraw_row_list),
         client.insert_native_block("INSERT INTO traces FORMAT native", trace_row_list)
     )?;
 
@@ -93,26 +98,14 @@ async fn handle_block(
 ) {
     let num = block.number.unwrap().as_u64();
     tokio::try_join!(
-        client.execute(format!(
-            "DELETE FROM blocks WHERE number = {} ",
-            num
-        )),
+        client.execute(format!("DELETE FROM blocks WHERE number = {} ", num)),
         client.execute(format!(
             "DELETE FROM transactions WHERE blockNumber = {}') ",
             num
         )),
-        client.execute(format!(
-            "DELETE FROM events WHERE blockNumber = {}') ",
-            num
-        )),
-        client.execute(format!(
-            "DELETE FROM withdraws WHERE blockNumber = {}",
-            num
-        )),
-        client.execute(format!(
-            "DELETE FROM traces WHERE blockNumber = {}",
-            num
-        )),
+        client.execute(format!("DELETE FROM events WHERE blockNumber = {}') ", num)),
+        client.execute(format!("DELETE FROM withdraws WHERE blockNumber = {}", num)),
+        client.execute(format!("DELETE FROM traces WHERE blockNumber = {}", num)),
     )
     .ok();
 
@@ -140,7 +133,14 @@ async fn listen_updates(
             block.hash.unwrap(),
             block.number.unwrap()
         );
-        handle_block(client.clone(), &provider, &trace_provider, provider_type, block).await;
+        handle_block(
+            client.clone(),
+            &provider,
+            &trace_provider,
+            provider_type,
+            block,
+        )
+        .await;
     }
 }
 
@@ -150,7 +150,7 @@ struct BlockHashRow {
 }
 
 #[derive(Row, Clone, Debug)]
-struct BlockTraceCountRaw {
+struct CountRaw {
     count: u64,
 }
 
@@ -169,7 +169,7 @@ pub async fn health_check(
         .await;
     if block.is_err() {
         warn!("add missing block: {}, {:?}", num, block);
-        insert_block(&client, provider, trace_provider, provider_type,  num)
+        insert_block(&client, provider, trace_provider, provider_type, num)
             .await
             .unwrap();
     } else {
@@ -185,26 +185,14 @@ pub async fn health_check(
                 format!("{:#032x}", block_on_chain.hash.unwrap())
             );
             tokio::try_join!(
-                client.execute(format!(
-                    "DELETE FROM blocks WHERE number = {} ",
-                    num
-                )),
+                client.execute(format!("DELETE FROM blocks WHERE number = {} ", num)),
                 client.execute(format!(
                     "DELETE FROM transactions WHERE blockNumber = {}') ",
                     num
                 )),
-                client.execute(format!(
-                    "DELETE FROM events WHERE blockNumber = {}') ",
-                    num
-                )),
-                client.execute(format!(
-                    "DELETE FROM withdraws WHERE blockNumber = {}",
-                    num
-                )),
-                client.execute(format!(
-                    "DELETE FROM traces WHERE blockNumber = {}",
-                    num
-                ))
+                client.execute(format!("DELETE FROM events WHERE blockNumber = {}') ", num)),
+                client.execute(format!("DELETE FROM withdraws WHERE blockNumber = {}", num)),
+                client.execute(format!("DELETE FROM traces WHERE blockNumber = {}", num))
             )
             .ok(); // ignore error
 
@@ -212,22 +200,19 @@ pub async fn health_check(
                 .await
                 .unwrap();
         } else {
-            // check traces
-            let block_trace_count = client
-                .query_one::<BlockTraceCountRaw>(format!(
-                    "SELECT count(*) as count FROM traces WHERE blockNumber = {}",
+            // check transactions
+            let block_events_count = client
+                .query_one::<CountRaw>(format!(
+                    "SELECT count(*) as count FROM transactions WHERE blockNumber = {}",
                     num
                 ))
                 .await;
-            match block_trace_count {
+            match block_events_count {
                 Ok(c) => {
                     if c.count == 0 {
-                        warn!("fix err block {}: no traces", num);
+                        warn!("fix err block {}: no events", num);
                         tokio::try_join!(
-                            client.execute(format!(
-                                "DELETE FROM blocks WHERE number = {} ",
-                                num
-                            )),
+                            client.execute(format!("DELETE FROM blocks WHERE number = {} ", num)),
                             client.execute(format!(
                                 "DELETE FROM transactions WHERE blockNumber = {}') ",
                                 num
@@ -240,16 +225,97 @@ pub async fn health_check(
                                 "DELETE FROM withdraws WHERE blockNumber = {}",
                                 num
                             )),
-                            client.execute(format!(
-                                "DELETE FROM traces WHERE blockNumber = {}",
-                                num
-                            ))
+                            client
+                                .execute(format!("DELETE FROM traces WHERE blockNumber = {}", num))
                         )
                         .ok(); // ignore error
 
                         insert_block(&client, provider, trace_provider, provider_type, num)
                             .await
                             .unwrap();
+                        return;
+                    }
+                }
+                Err(e) => {
+                    error!("{}", e)
+                }
+            }
+
+            // check events
+            let block_events_count = client
+                .query_one::<CountRaw>(format!(
+                    "SELECT count(*) as count FROM events WHERE blockNumber = {}",
+                    num
+                ))
+                .await;
+            match block_events_count {
+                Ok(c) => {
+                    if c.count == 0 {
+                        warn!("fix err block {}: no events", num);
+                        tokio::try_join!(
+                            client.execute(format!("DELETE FROM blocks WHERE number = {} ", num)),
+                            client.execute(format!(
+                                "DELETE FROM transactions WHERE blockNumber = {}') ",
+                                num
+                            )),
+                            client.execute(format!(
+                                "DELETE FROM events WHERE blockNumber = {}') ",
+                                num
+                            )),
+                            client.execute(format!(
+                                "DELETE FROM withdraws WHERE blockNumber = {}",
+                                num
+                            )),
+                            client
+                                .execute(format!("DELETE FROM traces WHERE blockNumber = {}", num))
+                        )
+                        .ok(); // ignore error
+
+                        insert_block(&client, provider, trace_provider, provider_type, num)
+                            .await
+                            .unwrap();
+                        return;
+                    }
+                }
+                Err(e) => {
+                    error!("{}", e)
+                }
+            }
+
+            // check traces
+            let block_trace_count = client
+                .query_one::<CountRaw>(format!(
+                    "SELECT count(*) as count FROM traces WHERE blockNumber = {}",
+                    num
+                ))
+                .await;
+            match block_trace_count {
+                Ok(c) => {
+                    if c.count == 0 {
+                        warn!("fix err block {}: no traces", num);
+                        tokio::try_join!(
+                            client.execute(format!("DELETE FROM blocks WHERE number = {} ", num)),
+                            client.execute(format!(
+                                "DELETE FROM transactions WHERE blockNumber = {}') ",
+                                num
+                            )),
+                            client.execute(format!(
+                                "DELETE FROM events WHERE blockNumber = {}') ",
+                                num
+                            )),
+                            client.execute(format!(
+                                "DELETE FROM withdraws WHERE blockNumber = {}",
+                                num
+                            )),
+                            client
+                                .execute(format!("DELETE FROM traces WHERE blockNumber = {}", num))
+                        )
+                        .ok(); // ignore error
+
+                        insert_block(&client, provider, trace_provider, provider_type, num)
+                            .await
+                            .unwrap();
+                        return;
                     }
                 }
                 Err(e) => {
@@ -302,7 +368,12 @@ pub(crate) async fn sync(
             ClientOptions {
                 username: clickhouse_url.username().to_string(),
                 password: clickhouse_url.password().unwrap_or("").to_string(),
-                default_database: clickhouse_url.path().to_string().strip_prefix('/').unwrap().to_string(),
+                default_database: clickhouse_url
+                    .path()
+                    .to_string()
+                    .strip_prefix('/')
+                    .unwrap()
+                    .to_string(),
             }
         } else {
             ClientOptions::default()

@@ -6,7 +6,7 @@ use klickhouse::{Client, Row};
 use log::{info, warn};
 
 use crate::{
-    clickhouse_scheme::bitcoin::{BlockRow, InputRow, OutputRow},
+    ch_btc::schema::{BlockRow, InputRow, OutputRow},
     ProviderType,
 };
 

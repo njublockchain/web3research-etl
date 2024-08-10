@@ -12,7 +12,7 @@ use tokio_retry::{
 use url::Url;
 
 use crate::{
-    clickhouse_scheme::arbitrum::{BlockRow, EventRow, TraceRow, TransactionRow, WithdrawalRow},
+    ch_arb_one::schema::{BlockRow, EventRow, TraceRow, TransactionRow, WithdrawalRow},
     ProviderType,
 };
 

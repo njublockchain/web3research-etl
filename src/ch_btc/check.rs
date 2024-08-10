@@ -7,8 +7,8 @@ use log::{debug, info, warn};
 use url::Url;
 
 use crate::{
-    clickhouse_scheme::bitcoin::{BlockRow, InputRow, OutputRow},
-    ProviderType, clickhouse_btc::sync::health_check,
+    ch_btc::schema::{BlockRow, InputRow, OutputRow},
+    ProviderType, ch_btc::sync::health_check,
 };
 
 pub(crate) async fn check(

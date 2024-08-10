@@ -17,7 +17,7 @@ use tron_grpc::{
 };
 use url::Url;
 
-use crate::clickhouse_scheme::tron::{
+use crate::ch_tron::schema::{
     AccountCreateContractRow, AccountPermissionUpdateContractRow, AccountUpdateContractRow,
     AssetIssueContractRow, BlockRow, CancelAllUnfreezeV2ContractRow, ClearAbiContractRow,
     CreateSmartContractRow, DelegateResourceContractRow, ExchangeCreateContractRow,

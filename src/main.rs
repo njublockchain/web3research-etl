@@ -1,12 +1,10 @@
-mod clickhouse_arb_nova;
-mod clickhouse_arb_one;
-mod clickhouse_btc;
-mod clickhouse_eth;
-mod clickhouse_polygon;
-mod clickhouse_tron;
-mod clickhouse_solana;
-
-mod clickhouse_scheme;
+mod ch_arb_nova;
+mod ch_arb_one;
+mod ch_btc;
+mod ch_eth;
+mod ch_polygon;
+mod ch_tron;
+mod ch_solana;
 
 use clap::Parser;
 use std::error::Error;
@@ -139,23 +137,23 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 let provider = provider.replace("[chain]", chain_name);
                 let trace_provider = trace_provider.map(|x| x.replace("[chain]", chain_name));
 
-                clickhouse_btc::init::init(db, provider, provider_type, from, batch).await?
+                ch_btc::init::init(db, provider, provider_type, from, batch).await?
             }
             SupportedChain::Ethereum => {
                 let chain_name = "ethereum";
                 let provider = provider.replace("[chain]", chain_name);
                 let trace_provider = trace_provider.map(|x| x.replace("[chain]", chain_name));
 
-                clickhouse_eth::init::init(db, provider, trace_provider, provider_type, from, batch)
+                ch_eth::init::init(db, provider, trace_provider, provider_type, from, batch)
                     .await?
             }
-            SupportedChain::Tron => clickhouse_tron::init::init(db, provider, from, batch).await?,
+            SupportedChain::Tron => ch_tron::init::init(db, provider, from, batch).await?,
             SupportedChain::ArbitrumOne => {
                 let chain_name = "arbitrum-one";
                 let provider = provider.replace("[chain]", chain_name);
                 let trace_provider = trace_provider.map(|x| x.replace("[chain]", chain_name));
 
-                clickhouse_arb_one::init::init(
+                ch_arb_one::init::init(
                     db,
                     provider,
                     trace_provider,
@@ -170,7 +168,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 let provider = provider.replace("[chain]", chain_name);
                 let trace_provider = trace_provider.map(|x| x.replace("[chain]", chain_name));
 
-                clickhouse_arb_nova::init::init(
+                ch_arb_nova::init::init(
                     db,
                     provider,
                     trace_provider,
@@ -185,7 +183,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 let provider = provider.replace("[chain]", chain_name);
                 let trace_provider = trace_provider.map(|x| x.replace("[chain]", chain_name));
 
-                clickhouse_polygon::init::init(
+                ch_polygon::init::init(
                     db,
                     provider,
                     trace_provider,
@@ -196,7 +194,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .await?
             },
             SupportedChain::Solana => {
-                clickhouse_solana::init::init(db, provider, provider_type, from, batch).await?;
+                ch_solana::init::init(db, provider, provider_type, from, batch).await?;
             }
         },
         ClapActionType::Sync {
@@ -212,7 +210,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 let provider = provider.replace("[chain]", chain_name);
                 let trace_provider = trace_provider.map(|x| x.replace("[chain]", chain_name));
 
-                clickhouse_eth::sync::sync(db, provider, trace_provider, provider_type).await?
+                ch_eth::sync::sync(db, provider, trace_provider, provider_type).await?
             }
             SupportedChain::Tron => todo!(),
             SupportedChain::ArbitrumOne => todo!(),
@@ -222,7 +220,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 let provider = provider.replace("[chain]", chain_name);
                 let trace_provider = trace_provider.map(|x| x.replace("[chain]", chain_name));
 
-                clickhouse_polygon::sync::sync(db, provider, trace_provider, provider_type).await?
+                ch_polygon::sync::sync(db, provider, trace_provider, provider_type).await?
             },
             SupportedChain::Solana => todo!()
         },
@@ -239,7 +237,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 let provider = provider.replace("[chain]", chain_name);
                 let trace_provider = trace_provider.map(|x| x.replace("[chain]", chain_name));
 
-                clickhouse_btc::check::check(db, provider, trace_provider, provider_type, from)
+                ch_btc::check::check(db, provider, trace_provider, provider_type, from)
                     .await?;
             }
             SupportedChain::Ethereum => {
@@ -247,7 +245,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 let provider = provider.replace("[chain]", chain_name);
                 let trace_provider = trace_provider.map(|x| x.replace("[chain]", chain_name));
 
-                clickhouse_eth::check::check(db, provider, trace_provider, provider_type, from)
+                ch_eth::check::check(db, provider, trace_provider, provider_type, from)
                     .await?;
             }
             SupportedChain::Tron => {}
@@ -258,7 +256,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 let provider = provider.replace("[chain]", chain_name);
                 let trace_provider = trace_provider.map(|x| x.replace("[chain]", chain_name));
 
-                clickhouse_polygon::check::check(db, provider, trace_provider, provider_type, from)
+                ch_polygon::check::check(db, provider, trace_provider, provider_type, from)
                     .await?;
             },
             SupportedChain::Solana => todo!()

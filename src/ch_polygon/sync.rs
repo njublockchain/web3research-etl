@@ -12,7 +12,7 @@ use tokio_retry::{
 };
 use url::Url;
 
-use crate::{clickhouse_scheme::ethereum::{
+use crate::{ch_polygon::schema::{
     BlockRow, EventRow, TraceRow, TransactionRow, WithdrawalRow,
 }, ProviderType};
 
@@ -150,7 +150,7 @@ struct BlockHashRow {
 }
 
 #[derive(Row, Clone, Debug)]
-struct CountRaw {
+struct BlockTraceCountRaw {
     count: u64,
 }
 
@@ -212,101 +212,9 @@ pub async fn health_check(
                 .await
                 .unwrap();
         } else {
-            // check transactions
-            let block_events_count = client
-                .query_one::<CountRaw>(format!(
-                    "SELECT count(*) as count FROM transactions WHERE blockNumber = {}",
-                    num
-                ))
-                .await;
-            match block_events_count {
-                Ok(c) => {
-                    if c.count == 0 {
-                        warn!("fix err block {}: no events", num);
-                        tokio::try_join!(
-                            client.execute(format!(
-                                "DELETE FROM blocks WHERE number = {} ",
-                                num
-                            )),
-                            client.execute(format!(
-                                "DELETE FROM transactions WHERE blockNumber = {}') ",
-                                num
-                            )),
-                            client.execute(format!(
-                                "DELETE FROM events WHERE blockNumber = {}') ",
-                                num
-                            )),
-                            client.execute(format!(
-                                "DELETE FROM withdraws WHERE blockNumber = {}",
-                                num
-                            )),
-                            client.execute(format!(
-                                "DELETE FROM traces WHERE blockNumber = {}",
-                                num
-                            ))
-                        )
-                        .ok(); // ignore error
-
-                        insert_block(&client, provider, trace_provider, provider_type, num)
-                            .await
-                            .unwrap();
-                        return
-                    }
-                }
-                Err(e) => {
-                    error!("{}", e)
-                }
-            }
-
-            // check events
-            let block_events_count = client
-                .query_one::<CountRaw>(format!(
-                    "SELECT count(*) as count FROM events WHERE blockNumber = {}",
-                    num
-                ))
-                .await;
-            match block_events_count {
-                Ok(c) => {
-                    if c.count == 0 {
-                        warn!("fix err block {}: no events", num);
-                        tokio::try_join!(
-                            client.execute(format!(
-                                "DELETE FROM blocks WHERE number = {} ",
-                                num
-                            )),
-                            client.execute(format!(
-                                "DELETE FROM transactions WHERE blockNumber = {}') ",
-                                num
-                            )),
-                            client.execute(format!(
-                                "DELETE FROM events WHERE blockNumber = {}') ",
-                                num
-                            )),
-                            client.execute(format!(
-                                "DELETE FROM withdraws WHERE blockNumber = {}",
-                                num
-                            )),
-                            client.execute(format!(
-                                "DELETE FROM traces WHERE blockNumber = {}",
-                                num
-                            ))
-                        )
-                        .ok(); // ignore error
-
-                        insert_block(&client, provider, trace_provider, provider_type, num)
-                            .await
-                            .unwrap();
-                        return
-                    }
-                }
-                Err(e) => {
-                    error!("{}", e)
-                }
-            }
-
             // check traces
             let block_trace_count = client
-                .query_one::<CountRaw>(format!(
+                .query_one::<BlockTraceCountRaw>(format!(
                     "SELECT count(*) as count FROM traces WHERE blockNumber = {}",
                     num
                 ))
@@ -342,7 +250,6 @@ pub async fn health_check(
                         insert_block(&client, provider, trace_provider, provider_type, num)
                             .await
                             .unwrap();
-                        return
                     }
                 }
                 Err(e) => {

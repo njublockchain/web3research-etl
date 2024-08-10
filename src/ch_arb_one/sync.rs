@@ -12,9 +12,10 @@ use tokio_retry::{
 };
 use url::Url;
 
-use crate::{clickhouse_scheme::arbitrum::{
-    BlockRow, EventRow, TraceRow, TransactionRow, WithdrawalRow,
-}, ProviderType};
+use crate::{
+    ch_arb_one::schema::{BlockRow, EventRow, TraceRow, TransactionRow, WithdrawalRow},
+    ProviderType,
+};
 
 use super::init::get_block_details;
 
@@ -22,7 +23,6 @@ async fn insert_block(
     client: &Client,
     provider: &Provider<Ws>,
     trace_provider: &Option<Provider<Http>>,
-    provider_type: ProviderType,
     block_number: u64,
 ) -> Result<(), Box<dyn Error>> {
     let mut block_row_list = Vec::with_capacity((1_u64) as usize);
@@ -34,9 +34,11 @@ async fn insert_block(
 
     let (block, receipts, traces) = Retry::spawn(
         ExponentialBackoff::from_millis(100).map(jitter).take(3),
-        || get_block_details(provider, trace_provider, provider_type==ProviderType::Erigon, block_number),
+        || get_block_details(provider, trace_provider, false, block_number),
     )
     .await?;
+
+    let block = &block;
 
     let block_row = BlockRow::from_ethers(&block);
     block_row_list.push(block_row);
@@ -68,26 +70,14 @@ async fn insert_block(
     }
 
     tokio::try_join!(
-        client.insert_native_block(
-            "INSERT INTO blocks FORMAT native",
-            block_row_list
-        ),
+        client.insert_native_block("INSERT INTO blocks FORMAT native", block_row_list),
         client.insert_native_block(
             "INSERT INTO transactions FORMAT native",
             transaction_row_list
         ),
-        client.insert_native_block(
-            "INSERT INTO events FORMAT native",
-            event_row_list
-        ),
-        client.insert_native_block(
-            "INSERT INTO withdraws FORMAT native",
-            withdraw_row_list
-        ),
-        client.insert_native_block(
-            "INSERT INTO traces FORMAT native",
-            trace_row_list
-        )
+        client.insert_native_block("INSERT INTO events FORMAT native", event_row_list),
+        client.insert_native_block("INSERT INTO withdraws FORMAT native", withdraw_row_list),
+        client.insert_native_block("INSERT INTO traces FORMAT native", trace_row_list)
     )?;
 
     Ok(())
@@ -97,35 +87,22 @@ async fn handle_block(
     client: Client,
     provider: &Provider<Ws>,
     trace_provider: &Option<Provider<Http>>,
-    provider_type: ProviderType,
     block: Block<H256>,
 ) {
     let num = block.number.unwrap().as_u64();
     tokio::try_join!(
-        client.execute(format!(
-            "DELETE FROM blocks WHERE number = {} ",
-            num
-        )),
+        client.execute(format!("DELETE FROM blocks WHERE number = {} ", num)),
         client.execute(format!(
             "DELETE FROM transactions WHERE blockNumber = {}') ",
             num
         )),
-        client.execute(format!(
-            "DELETE FROM events WHERE blockNumber = {}') ",
-            num
-        )),
-        client.execute(format!(
-            "DELETE FROM withdraws WHERE blockNumber = {}",
-            num
-        )),
-        client.execute(format!(
-            "DELETE FROM traces WHERE blockNumber = {}",
-            num
-        )),
+        client.execute(format!("DELETE FROM events WHERE blockNumber = {}') ", num)),
+        client.execute(format!("DELETE FROM withdraws WHERE blockNumber = {}", num)),
+        client.execute(format!("DELETE FROM traces WHERE blockNumber = {}", num)),
     )
     .ok();
 
-    insert_block(&client, provider, trace_provider, provider_type, num)
+    insert_block(&client, provider, trace_provider, num)
         .await
         .unwrap();
     warn!("inserted block {}", num)
@@ -135,7 +112,6 @@ async fn listen_updates(
     client: Client,
     provider: Provider<Ws>,
     trace_provider: Option<Provider<Http>>,
-    provider_type: ProviderType,
 ) {
     // if in db, update it
     // https://clickhouse.com/docs/en/guides/developer/deduplication
@@ -149,7 +125,7 @@ async fn listen_updates(
             block.hash.unwrap(),
             block.number.unwrap()
         );
-        handle_block(client.clone(), &provider, &trace_provider, provider_type, block).await;
+        handle_block(client.clone(), &provider, &trace_provider, block).await;
     }
 }
 
@@ -170,6 +146,11 @@ pub async fn health_check(
     provider_type: ProviderType,
     num: u64,
 ) {
+    assert!(
+        provider_type == ProviderType::Default,
+        "unsupported provider type"
+    );
+
     let block = client
         .query_one::<BlockHashRow>(format!(
             "SELECT hex(hash) FROM blocks WHERE number = {}",
@@ -178,7 +159,7 @@ pub async fn health_check(
         .await;
     if block.is_err() {
         warn!("add missing block: {}, {:?}", num, block);
-        insert_block(&client, provider, trace_provider, provider_type, num)
+        insert_block(&client, provider, trace_provider, num)
             .await
             .unwrap();
     } else {
@@ -194,30 +175,18 @@ pub async fn health_check(
                 format!("{:#032x}", block_on_chain.hash.unwrap())
             );
             tokio::try_join!(
-                client.execute(format!(
-                    "DELETE FROM blocks WHERE number = {} ",
-                    num
-                )),
+                client.execute(format!("DELETE FROM blocks WHERE number = {} ", num)),
                 client.execute(format!(
                     "DELETE FROM transactions WHERE blockNumber = {}') ",
                     num
                 )),
-                client.execute(format!(
-                    "DELETE FROM events WHERE blockNumber = {}') ",
-                    num
-                )),
-                client.execute(format!(
-                    "DELETE FROM withdraws WHERE blockNumber = {}",
-                    num
-                )),
-                client.execute(format!(
-                    "DELETE FROM traces WHERE blockNumber = {}",
-                    num
-                ))
+                client.execute(format!("DELETE FROM events WHERE blockNumber = {}') ", num)),
+                client.execute(format!("DELETE FROM withdraws WHERE blockNumber = {}", num)),
+                client.execute(format!("DELETE FROM traces WHERE blockNumber = {}", num))
             )
             .ok(); // ignore error
 
-            insert_block(&client, provider, trace_provider, provider_type, num)
+            insert_block(&client, provider, trace_provider, num)
                 .await
                 .unwrap();
         } else {
@@ -233,10 +202,7 @@ pub async fn health_check(
                     if c.count == 0 {
                         warn!("fix err block {}: no traces", num);
                         tokio::try_join!(
-                            client.execute(format!(
-                                "DELETE FROM blocks WHERE number = {} ",
-                                num
-                            )),
+                            client.execute(format!("DELETE FROM blocks WHERE number = {} ", num)),
                             client.execute(format!(
                                 "DELETE FROM transactions WHERE blockNumber = {}') ",
                                 num
@@ -249,14 +215,12 @@ pub async fn health_check(
                                 "DELETE FROM withdraws WHERE blockNumber = {}",
                                 num
                             )),
-                            client.execute(format!(
-                                "DELETE FROM traces WHERE blockNumber = {}",
-                                num
-                            ))
+                            client
+                                .execute(format!("DELETE FROM traces WHERE blockNumber = {}", num))
                         )
                         .ok(); // ignore error
 
-                        insert_block(&client, provider, trace_provider, provider_type, num)
+                        insert_block(&client, provider, trace_provider, num)
                             .await
                             .unwrap();
                     }
@@ -311,7 +275,12 @@ pub(crate) async fn sync(
             ClientOptions {
                 username: clickhouse_url.username().to_string(),
                 password: clickhouse_url.password().unwrap_or("").to_string(),
-                default_database: clickhouse_url.path().to_string().strip_prefix('/').unwrap().to_string(),
+                default_database: clickhouse_url
+                    .path()
+                    .to_string()
+                    .strip_prefix('/')
+                    .unwrap()
+                    .to_string(),
             }
         } else {
             ClientOptions::default()
@@ -338,7 +307,6 @@ pub(crate) async fn sync(
         clickhouse_client_for_listen,
         provider_for_listen,
         trace_provider_for_listen,
-        provider_type,
     ));
 
     let mut interval = tokio::time::interval(Duration::from_secs(60 * 60 * 4));

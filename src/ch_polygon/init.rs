@@ -12,7 +12,7 @@ use tokio_retry::{
 use url::Url;
 
 use crate::{
-    clickhouse_scheme::arbitrum::{BlockRow, EventRow, TraceRow, TransactionRow, WithdrawalRow},
+    ch_polygon::schema::{BlockRow, EventRow, TraceRow, TransactionRow, WithdrawalRow},
     ProviderType,
 };
 
@@ -58,6 +58,7 @@ pub async fn get_block_details(
                 for tx in txs {
                     // let provider = provider.clone();
                     // set.spawn(async move {
+
                     let receipt = provider
                         .get_transaction_receipt(tx.hash)
                         .await
@@ -98,7 +99,12 @@ pub(crate) async fn init(
         klickhouse::ClientOptions {
             username: clickhouse_url.username().to_string(),
             password: clickhouse_url.password().unwrap_or("").to_string(),
-            default_database: clickhouse_url.path().to_string().strip_prefix('/').unwrap().to_string(),
+            default_database: clickhouse_url
+                .path()
+                .to_string()
+                .strip_prefix('/')
+                .unwrap()
+                .to_string(),
         }
     } else {
         klickhouse::ClientOptions::default()
@@ -148,10 +154,6 @@ pub(crate) async fn init(
             extraData        String,
             timestamp        UInt256,
             size             UInt256,
-
-            l1BlockNumber UInt64,
-            sendCount     UInt64,
-            sendRoot      String
         ) ENGINE=ReplacingMergeTree 
         ORDER BY (hash, number);
         ",
@@ -186,11 +188,7 @@ pub(crate) async fn init(
             gasUsed           UInt256,
             logsBloom         String,
             root              Nullable(FixedString(32)) COMMENT 'Only present before activation of [EIP-658]',
-            status            Nullable(UInt64) COMMENT 'Only present after activation of [EIP-658]',
-
-            requestId     Nullable(UInt256),
-            l1BlockNumber UInt64,
-            gasUsedForL1  UInt256
+            status            Nullable(UInt64) COMMENT 'Only present after activation of [EIP-658]'
         ) ENGINE=ReplacingMergeTree
         ORDER BY hash;
         ").await.unwrap();
@@ -222,7 +220,7 @@ pub(crate) async fn init(
                 `topic1` Nullable(FixedString(32)),
                 `topic2` Nullable(FixedString(32)),
                 `topic3` Nullable(FixedString(32)),
-                
+            
                 `data` String
             )
             ENGINE = ReplacingMergeTree
@@ -356,31 +354,33 @@ pub(crate) async fn init(
         })
         .await?;
 
-        let block_row = BlockRow::from_ethers(&block);
+        let block = &block;
+
+        let block_row = BlockRow::from_ethers(block);
         block_row_list.push(block_row);
 
         for (transaction_index, transaction) in block.transactions.iter().enumerate() {
             let receipt = &receipts[transaction_index];
 
-            let transaction_row = TransactionRow::from_ethers(&block, transaction, receipt);
+            let transaction_row = TransactionRow::from_ethers(block, transaction, receipt);
             transaction_row_list.push(transaction_row);
 
             for log in &receipt.logs {
-                let event_row = EventRow::from_ethers(&block, transaction, log);
+                let event_row = EventRow::from_ethers(block, transaction, log);
                 event_row_list.push(event_row);
             }
         }
 
         if let Some(withdraws) = &block.withdrawals {
             for withdraw in withdraws {
-                let withdraw_row = WithdrawalRow::from_ethers(&block, withdraw);
+                let withdraw_row = WithdrawalRow::from_ethers(block, withdraw);
                 withdraw_row_list.push(withdraw_row);
             }
         }
 
         if let Some(traces) = traces {
             for (index, trace) in traces.into_iter().enumerate() {
-                let trace_row = TraceRow::from_ethers(&block, &trace, index);
+                let trace_row = TraceRow::from_ethers(block, &trace, index);
                 trace_row_list.push(trace_row);
             }
         }
@@ -417,31 +417,31 @@ pub(crate) async fn init(
 
             info!("{} done blocks & txs", num)
         }
-    }
 
-    tokio::try_join!(
-        klient.insert_native_block(
-            "INSERT INTO blocks FORMAT native",
-            block_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO transactions FORMAT native",
-            transaction_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO events FORMAT native",
-            event_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO withdraws FORMAT native",
-            withdraw_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO traces FORMAT native",
-            trace_row_list.to_vec()
+        tokio::try_join!(
+            klient.insert_native_block(
+                "INSERT INTO blocks FORMAT native",
+                block_row_list.to_vec()
+            ),
+            klient.insert_native_block(
+                "INSERT INTO transactions FORMAT native",
+                transaction_row_list.to_vec()
+            ),
+            klient.insert_native_block(
+                "INSERT INTO events FORMAT native",
+                event_row_list.to_vec()
+            ),
+            klient.insert_native_block(
+                "INSERT INTO withdraws FORMAT native",
+                withdraw_row_list.to_vec()
+            ),
+            klient.insert_native_block(
+                "INSERT INTO traces FORMAT native",
+                trace_row_list.to_vec()
+            )
         )
-    )
-    .unwrap();
+        .unwrap();
+    }
 
     Ok(())
 }

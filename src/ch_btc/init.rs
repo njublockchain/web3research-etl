@@ -6,7 +6,7 @@ use log::{debug, info, warn};
 use url::Url;
 
 use crate::{
-    clickhouse_scheme::bitcoin::{BlockRow, InputRow, OutputRow},
+    ch_btc::schema::{BlockRow, InputRow, OutputRow},
     ProviderType,
 };
 
