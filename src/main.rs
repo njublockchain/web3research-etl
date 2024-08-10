@@ -4,6 +4,7 @@ mod clickhouse_btc;
 mod clickhouse_eth;
 mod clickhouse_polygon;
 mod clickhouse_tron;
+mod clickhouse_solana;
 
 mod clickhouse_scheme;
 
@@ -109,6 +110,7 @@ pub enum SupportedChain {
     ArbitrumOne,
     ArbitrumNova,
     Polygon,
+    Solana,
 }
 
 #[derive(clap::ValueEnum, Copy, Clone, PartialEq, Eq, Debug)]
@@ -192,6 +194,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     batch,
                 )
                 .await?
+            },
+            SupportedChain::Solana => {
+                clickhouse_solana::init::init(db, provider, provider_type, from, batch).await?;
             }
         },
         ClapActionType::Sync {
@@ -218,7 +223,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 let trace_provider = trace_provider.map(|x| x.replace("[chain]", chain_name));
 
                 clickhouse_polygon::sync::sync(db, provider, trace_provider, provider_type).await?
-            }
+            },
+            SupportedChain::Solana => todo!()
         },
         ClapActionType::Check {
             from,
@@ -254,7 +260,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
                 clickhouse_polygon::check::check(db, provider, trace_provider, provider_type, from)
                     .await?;
-            }
+            },
+            SupportedChain::Solana => todo!()
         },
     }
     // if args.db.starts_with("clickhouse") {
