@@ -1,19 +1,21 @@
 use std::error::Error;
 
+use bitcoin::witness;
 use documented::Documented;
 use log::{debug, info, warn};
 use tron_grpc::{
-    AccountCreateContract, AccountPermissionUpdateContract,
-    AccountUpdateContract, AssetIssueContract, CancelAllUnfreezeV2Contract,
-    ClearAbiContract, CreateSmartContract, DelegateResourceContract, EmptyMessage,
-    ExchangeCreateContract, ExchangeInjectContract, ExchangeTransactionContract,
-    ExchangeWithdrawContract, FreezeBalanceContract, FreezeBalanceV2Contract,
-    MarketCancelOrderContract, MarketSellAssetContract, NumberMessage,
-    ParticipateAssetIssueContract, ShieldedTransferContract, TransferAssetContract,
+    AccountCreateContract, AccountPermissionUpdateContract, AccountUpdateContract,
+    AssetIssueContract, CancelAllUnfreezeV2Contract, ClearAbiContract, CreateSmartContract,
+    DelegateResourceContract, EmptyMessage, ExchangeCreateContract, ExchangeInjectContract,
+    ExchangeTransactionContract, ExchangeWithdrawContract, FreezeBalanceContract,
+    FreezeBalanceV2Contract, MarketCancelOrderContract, MarketSellAssetContract, NumberMessage,
+    ParticipateAssetIssueContract, ProposalApproveContract, ProposalCreateContract,
+    ProposalDeleteContract, SetAccountIdContract, ShieldedTransferContract, TransferAssetContract,
     TransferContract, TriggerSmartContract, UnDelegateResourceContract, UnfreezeAssetContract,
     UnfreezeBalanceContract, UnfreezeBalanceV2Contract, UpdateAssetContract,
-    UpdateBrokerageContract, UpdateEnergyLimitContract, UpdateSettingContract, VoteWitnessContract,
-    WithdrawBalanceContract, WithdrawExpireUnfreezeContract, WitnessUpdateContract,
+    UpdateBrokerageContract, UpdateEnergyLimitContract, UpdateSettingContract, VoteAssetContract,
+    VoteWitnessContract, WithdrawBalanceContract, WithdrawExpireUnfreezeContract,
+    WitnessCreateContract, WitnessUpdateContract,
 };
 use url::Url;
 
@@ -24,11 +26,13 @@ use crate::ch_tron::schema::{
     ExchangeInjectContractRow, ExchangeTransactionContractRow, ExchangeWithdrawContractRow,
     FreezeBalanceContractRow, FreezeBalanceV2ContractRow, InternalTransactionRow, LogRow,
     MarketCancelOrderContractRow, MarketSellAssetContractRow, ParticipateAssetIssueContractRow,
-    ShieldedTransferContractRow, TransactionRow, TransferAssetContractRow, TransferContractRow,
-    TriggerSmartContractRow, UndelegateResourceContractRow, UnfreezeAssetContractRow,
-    UnfreezeBalanceContractRow, UnfreezeBalanceV2ContractRow, UpdateAssetContractRow,
-    UpdateBrokerageContractRow, UpdateEnergyLimitContractRow, UpdateSettingContractRow,
-    VoteWitnessContractRow, WithdrawBalanceContractRow, WithdrawExpireUnfreezeContractRow,
+    ProposalApproveContractRow, ProposalCreateContractRow, ProposalDeleteContractRow,
+    SetAccountIdContractRow, ShieldedTransferContractRow, TransactionRow, TransferAssetContractRow,
+    TransferContractRow, TriggerSmartContractRow, UndelegateResourceContractRow,
+    UnfreezeAssetContractRow, UnfreezeBalanceContractRow, UnfreezeBalanceV2ContractRow,
+    UpdateAssetContractRow, UpdateBrokerageContractRow, UpdateEnergyLimitContractRow,
+    UpdateSettingContractRow, VoteAssetContractRow, VoteWitnessContractRow,
+    WithdrawBalanceContractRow, WithdrawExpireUnfreezeContractRow, WitnessCreateContractRow,
     WitnessUpdateContractRow,
 };
 
@@ -89,7 +93,12 @@ pub(crate) async fn init(
         .execute(TransferAssetContractRow::DOCS)
         .await
         .unwrap();
+    klient.execute(VoteAssetContractRow::DOCS).await.unwrap();
     klient.execute(VoteWitnessContractRow::DOCS).await.unwrap();
+    klient
+        .execute(WitnessCreateContractRow::DOCS)
+        .await
+        .unwrap();
     klient.execute(AssetIssueContractRow::DOCS).await.unwrap();
     klient
         .execute(WitnessUpdateContractRow::DOCS)
@@ -120,6 +129,19 @@ pub(crate) async fn init(
         .await
         .unwrap();
     klient.execute(UpdateAssetContractRow::DOCS).await.unwrap();
+    klient
+        .execute(ProposalCreateContractRow::DOCS)
+        .await
+        .unwrap();
+    klient
+        .execute(ProposalApproveContractRow::DOCS)
+        .await
+        .unwrap();
+    klient
+        .execute(ProposalDeleteContractRow::DOCS)
+        .await
+        .unwrap();
+    klient.execute(SetAccountIdContractRow::DOCS).await.unwrap();
     klient.execute(CreateSmartContractRow::DOCS).await.unwrap();
     klient.execute(TriggerSmartContractRow::DOCS).await.unwrap();
     klient
@@ -211,10 +233,56 @@ pub(crate) async fn init(
     let mut log_row_list = Vec::new();
     let mut internal_row_list = Vec::new();
 
+    // all native contracts from
+    // https://github.com/tronprotocol/protocol/blob/2a678934da3992b1a67f975769bbb2d31989451f/core/Tron.proto#L338
+    // Transaction.Contract.ContractType:
+    //   AccountCreateContract = 0;
+    //   TransferContract = 1;
+    //   TransferAssetContract = 2;
+    //   VoteAssetContract = 3;
+    //   VoteWitnessContract = 4;
+    //   WitnessCreateContract = 5;
+    //   AssetIssueContract = 6;
+    //   WitnessUpdateContract = 8;
+    //   ParticipateAssetIssueContract = 9;
+    //   AccountUpdateContract = 10;
+    //   FreezeBalanceContract = 11;
+    //   UnfreezeBalanceContract = 12;
+    //   WithdrawBalanceContract = 13;
+    //   UnfreezeAssetContract = 14;
+    //   UpdateAssetContract = 15;
+    //   ProposalCreateContract = 16;
+    //   ProposalApproveContract = 17;
+    //   ProposalDeleteContract = 18;
+    //   SetAccountIdContract = 19;
+    //   CustomContract = 20;
+    //   CreateSmartContract = 30;
+    //   TriggerSmartContract = 31;
+    //   GetContract = 32;
+    //   UpdateSettingContract = 33;
+    //   ExchangeCreateContract = 41;
+    //   ExchangeInjectContract = 42;
+    //   ExchangeWithdrawContract = 43;
+    //   ExchangeTransactionContract = 44;
+    //   UpdateEnergyLimitContract = 45;
+    //   AccountPermissionUpdateContract = 46;
+    //   ClearABIContract = 48;
+    //   UpdateBrokerageContract = 49;
+    //   ShieldedTransferContract = 51;
+    //   MarketSellAssetContract = 52;
+    //   MarketCancelOrderContract = 53;
+    //   FreezeBalanceV2Contract = 54;
+    //   UnfreezeBalanceV2Contract = 55;
+    //   WithdrawExpireUnfreezeContract = 56;
+    //   DelegateResourceContract = 57;
+    //   UnDelegateResourceContract = 58;
+    //   CancelAllUnfreezeV2Contract = 59;
     let mut account_create_contract_row_list = Vec::new();
     let mut transfer_contract_row_list = Vec::new();
     let mut transfer_asset_contract_row_list = Vec::new();
+    let mut vote_asset_contract_row_list = Vec::new(); //TODO
     let mut vote_witness_contract_row_list = Vec::new();
+    let mut witness_create_contract_row_list = Vec::new(); //TODO
     let mut asset_issue_contract_row_list = Vec::new();
     let mut witness_update_contract_row_list = Vec::new();
     let mut participate_asset_issue_contract_row_list = Vec::new();
@@ -224,8 +292,14 @@ pub(crate) async fn init(
     let mut withdraw_balance_contract_row_list = Vec::new();
     let mut unfreeze_asset_contract_row_list = Vec::new();
     let mut update_asset_contract_row_list = Vec::new();
+    let mut proposal_create_contract_row_list = Vec::new(); //TODO
+    let mut proposal_approve_contract_row_list = Vec::new(); //TODO
+    let mut proposal_delete_contract_row_list = Vec::new(); //TODO
+    let mut set_account_id_contract_row_list = Vec::new(); //TODO
+                                                           // let mut custom_contract_row_list = Vec::new();//TODO
     let mut create_smart_contract_row_list = Vec::new();
     let mut trigger_smart_contract_row_list = Vec::new();
+    // let mut get_contract_row_list = Vec::new();//TODO
     let mut update_setting_contract_row_list = Vec::new();
     let mut exchange_create_contract_row_list = Vec::new();
     let mut exchange_inject_contract_row_list = Vec::new();
@@ -339,6 +413,16 @@ pub(crate) async fn init(
                 );
                 transfer_asset_contract_row_list.push(row);
             }
+            if let Ok(msg) = parameter.to_msg::<VoteAssetContract>() {
+                let row = VoteAssetContractRow::from_grpc(
+                    num,
+                    transaction.txid.clone(),
+                    index.try_into().unwrap(),
+                    0,
+                    &msg,
+                );
+                vote_asset_contract_row_list.push(row);
+            }
             if let Ok(msg) = parameter.to_msg::<VoteWitnessContract>() {
                 let row = VoteWitnessContractRow::from_grpc(
                     num,
@@ -348,6 +432,16 @@ pub(crate) async fn init(
                     &msg,
                 );
                 vote_witness_contract_row_list.push(row);
+            }
+            if let Ok(msg) = parameter.to_msg::<WitnessCreateContract>() {
+                let row = WitnessCreateContractRow::from_grpc(
+                    num,
+                    transaction.txid.clone(),
+                    index.try_into().unwrap(),
+                    0,
+                    &msg,
+                );
+                witness_create_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<AssetIssueContract>() {
                 let row = AssetIssueContractRow::from_grpc(
@@ -438,6 +532,46 @@ pub(crate) async fn init(
                     &msg,
                 );
                 update_asset_contract_row_list.push(row);
+            }
+            if let Ok(msg) = parameter.to_msg::<ProposalCreateContract>() {
+                let row = ProposalCreateContractRow::from_grpc(
+                    num,
+                    transaction.txid.clone(),
+                    index.try_into().unwrap(),
+                    0,
+                    &msg,
+                );
+                proposal_create_contract_row_list.push(row);
+            }
+            if let Ok(msg) = parameter.to_msg::<ProposalApproveContract>() {
+                let row = ProposalApproveContractRow::from_grpc(
+                    num,
+                    transaction.txid.clone(),
+                    index.try_into().unwrap(),
+                    0,
+                    &msg,
+                );
+                proposal_approve_contract_row_list.push(row);
+            }
+            if let Ok(msg) = parameter.to_msg::<ProposalDeleteContract>() {
+                let row = ProposalDeleteContractRow::from_grpc(
+                    num,
+                    transaction.txid.clone(),
+                    index.try_into().unwrap(),
+                    0,
+                    &msg,
+                );
+                proposal_delete_contract_row_list.push(row);
+            }
+            if let Ok(msg) = parameter.to_msg::<SetAccountIdContract>() {
+                let row = SetAccountIdContractRow::from_grpc(
+                    num,
+                    transaction.txid.clone(),
+                    index.try_into().unwrap(),
+                    0,
+                    &msg,
+                );
+                set_account_id_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<CreateSmartContract>() {
                 let row = CreateSmartContractRow::from_grpc(
@@ -655,7 +789,8 @@ pub(crate) async fn init(
                     "INSERT INTO transactions FORMAT native",
                     transaction_row_list.to_vec()
                 ),
-                klient.insert_native_block("INSERT INTO events FORMAT native", log_row_list.to_vec()),
+                klient
+                    .insert_native_block("INSERT INTO events FORMAT native", log_row_list.to_vec()),
                 klient.insert_native_block(
                     "INSERT INTO internals FORMAT native",
                     internal_row_list.to_vec()
@@ -673,8 +808,16 @@ pub(crate) async fn init(
                     transfer_asset_contract_row_list.to_vec()
                 ),
                 klient.insert_native_block(
+                    "INSERT INTO voteAssetContracts FORMAT native",
+                    vote_asset_contract_row_list.to_vec()
+                ),
+                klient.insert_native_block(
                     "INSERT INTO voteWitnessContracts FORMAT native",
                     vote_witness_contract_row_list.to_vec()
+                ),
+                klient.insert_native_block(
+                    "INSERT INTO witnessCreateContracts FORMAT native",
+                    witness_create_contract_row_list.to_vec()
                 ),
                 klient.insert_native_block(
                     "INSERT INTO assetIssueContracts FORMAT native",
@@ -711,6 +854,22 @@ pub(crate) async fn init(
                 klient.insert_native_block(
                     "INSERT INTO updateAssetContracts FORMAT native",
                     update_asset_contract_row_list.to_vec()
+                ),
+                klient.insert_native_block(
+                    "INSERT INTO proposalCreateContracts FORMAT native",
+                    proposal_create_contract_row_list.to_vec()
+                ),
+                klient.insert_native_block(
+                    "INSERT INTO protosalApproveContracts FORMAT native",
+                    proposal_approve_contract_row_list.to_vec()
+                ),
+                klient.insert_native_block(
+                    "INSERT INTO proposalDeleteContracts FORMAT native",
+                    proposal_delete_contract_row_list.to_vec()
+                ),
+                klient.insert_native_block(
+                    "INSERT INTO setAccountIdContracts FORMAT native",
+                    set_account_id_contract_row_list.to_vec()
                 ),
                 klient.insert_native_block(
                     "INSERT INTO createSmartContracts FORMAT native",
@@ -839,10 +998,7 @@ pub(crate) async fn init(
     }
 
     tokio::try_join!(
-        klient.insert_native_block(
-            "INSERT INTO blocks FORMAT native",
-            block_row_list.to_vec()
-        ),
+        klient.insert_native_block("INSERT INTO blocks FORMAT native", block_row_list.to_vec()),
         klient.insert_native_block(
             "INSERT INTO transactions FORMAT native",
             transaction_row_list.to_vec()

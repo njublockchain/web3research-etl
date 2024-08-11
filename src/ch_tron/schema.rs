@@ -9,12 +9,14 @@ use tron_grpc::{
     ClearAbiContract, CreateSmartContract, DelegateResourceContract, ExchangeCreateContract,
     ExchangeInjectContract, ExchangeTransactionContract, ExchangeWithdrawContract,
     FreezeBalanceContract, FreezeBalanceV2Contract, InternalTransaction, MarketCancelOrderContract,
-    MarketSellAssetContract, ParticipateAssetIssueContract, ShieldedTransferContract,
+    MarketSellAssetContract, ParticipateAssetIssueContract, ProposalApproveContract,
+    ProposalCreateContract, ProposalDeleteContract, SetAccountIdContract, ShieldedTransferContract,
     TransactionExtention, TransactionInfo, TransferAssetContract, TransferContract,
     TriggerSmartContract, UnDelegateResourceContract, UnfreezeAssetContract,
     UnfreezeBalanceContract, UnfreezeBalanceV2Contract, UpdateAssetContract,
-    UpdateBrokerageContract, UpdateEnergyLimitContract, UpdateSettingContract, VoteWitnessContract,
-    WithdrawBalanceContract, WithdrawExpireUnfreezeContract, WitnessUpdateContract,
+    UpdateBrokerageContract, UpdateEnergyLimitContract, UpdateSettingContract, VoteAssetContract,
+    VoteWitnessContract, WithdrawBalanceContract, WithdrawExpireUnfreezeContract,
+    WitnessCreateContract, WitnessUpdateContract,
 };
 
 pub fn len_20_addr_from_any_vec(any_addr: Vec<u8>) -> Bytes {
@@ -647,6 +649,60 @@ impl TransferAssetContractRow {
     }
 }
 
+/** CREATE TABLE IF NOT EXISTS voteAssetContracts
+(
+    `blockNum` Int64,
+    `transactionHash` FixedString(32),
+    `transactionIndex` Int64,
+    `contractIndex` Int64,
+
+    `ownerAddress` FixedString(20),
+    `voteAddress` Array(FixedString(20)),
+    `support` Bool,
+    `count` Int32,
+) ENGINE = ReplacingMergeTree
+ORDER BY (ownerAddress, voteAddress, blockNum, transactionHash, contractIndex)
+SETTINGS index_granularity = 8192; */
+#[derive(Row, Documented, Clone, Debug, Default)]
+#[klickhouse(rename_all = "camelCase")]
+pub struct VoteAssetContractRow {
+    pub block_num: i64,
+    pub transaction_hash: Bytes,
+    pub transaction_index: i64,
+    pub contract_index: i64,
+
+    pub owner_address: Bytes,
+    pub vote_address: Vec<Bytes>,
+    pub support: bool,
+    pub count: i32,
+}
+
+impl VoteAssetContractRow {
+    pub fn from_grpc(
+        block_num: i64,
+        transaction_hash: Vec<u8>,
+        transaction_index: i64,
+        contract_index: i64,
+        call: &VoteAssetContract,
+    ) -> Self {
+        Self {
+            block_num,
+            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_index,
+            contract_index,
+
+            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
+            vote_address: call
+                .vote_address
+                .iter()
+                .map(|vote| len_20_addr_from_any_vec(vote.clone()))
+                .collect(),
+            support: call.support,
+            count: call.count,
+        }
+    }
+}
+
 /** CREATE TABLE IF NOT EXISTS voteWitnessContracts (
   blockNum Int64,
   transactionHash FixedString(32),
@@ -731,7 +787,7 @@ impl Vote {
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (ownerAddress, url, blockNum, transactionHash, contractIndex)
 */
-#[derive(Row, Clone, Debug, Default)]
+#[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct WitnessCreateContractRow {
     pub block_num: i64,
@@ -740,7 +796,27 @@ pub struct WitnessCreateContractRow {
     pub contract_index: i64,
 
     pub owner_address: Bytes,
-    pub url: String,
+    pub url: Bytes,
+}
+
+impl WitnessCreateContractRow {
+    pub fn from_grpc(
+        block_num: i64,
+        transaction_hash: Vec<u8>,
+        transaction_index: i64,
+        contract_index: i64,
+        call: &WitnessCreateContract,
+    ) -> Self {
+        Self {
+            block_num,
+            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_index,
+            contract_index,
+
+            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
+            url: Bytes(call.url.clone()),
+        }
+    }
 }
 
 /** CREATE TABLE IF NOT EXISTS assetIssueContracts (
@@ -1234,6 +1310,26 @@ pub struct ProposalCreateContractRow {
     pub parameters: HashMap<i64, i64>,
 }
 
+impl ProposalCreateContractRow {
+    pub fn from_grpc(
+        block_num: i64,
+        transaction_hash: Vec<u8>,
+        transaction_index: i64,
+        contract_index: i64,
+        call: &ProposalCreateContract,
+    ) -> Self {
+        Self {
+            block_num,
+            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_index,
+            contract_index,
+
+            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
+            parameters: call.parameters.clone(),
+        }
+    }
+}
+
 /** CREATE TABLE IF NOT EXISTS proposalApproveContracts (
   blockNum Int64,
   transactionHash FixedString(32),
@@ -1260,6 +1356,27 @@ pub struct ProposalApproveContractRow {
     pub is_add_approval: bool,
 }
 
+impl ProposalApproveContractRow {
+    pub fn from_grpc(
+        block_num: i64,
+        transaction_hash: Vec<u8>,
+        transaction_index: i64,
+        contract_index: i64,
+        call: &ProposalApproveContract,
+    ) -> Self {
+        Self {
+            block_num,
+            transaction_hash: Bytes(transaction_hash),
+            transaction_index,
+            contract_index,
+
+            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
+            proposal_id: call.proposal_id,
+            is_add_approval: call.is_add_approval,
+        }
+    }
+}
+
 /** CREATE TABLE IF NOT EXISTS proposalDeleteContracts (
   blockNum Int64,
   transactionHash FixedString(32),
@@ -1284,13 +1401,33 @@ pub struct ProposalDeleteContractRow {
     pub proposal_id: i64,
 }
 
+impl ProposalDeleteContractRow {
+    pub fn from_grpc(
+        block_num: i64,
+        transaction_hash: Vec<u8>,
+        transaction_index: i64,
+        contract_index: i64,
+        call: &ProposalDeleteContract,
+    ) -> Self {
+        Self {
+            block_num,
+            transaction_hash: Bytes(transaction_hash),
+            transaction_index,
+            contract_index,
+
+            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
+            proposal_id: call.proposal_id,
+        }
+    }
+}
+
 /** CREATE TABLE IF NOT EXISTS setAccountIdContracts (
   blockNum Int64,
   transactionHash FixedString(32),
   transactionIndex Int64,
   contractIndex Int64,
 
-  accountId FixedString(32),
+  accountId String,
   ownerAddress FixedString(20),
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (ownerAddress, blockNum, transactionHash, contractIndex)
@@ -1306,6 +1443,26 @@ pub struct SetAccountIdContractRow {
 
     pub account_id: Bytes,
     pub owner_address: Bytes,
+}
+
+impl SetAccountIdContractRow {
+    pub fn from_grpc(
+        block_num: i64,
+        transaction_hash: Vec<u8>,
+        transaction_index: i64,
+        contract_index: i64,
+        call: &SetAccountIdContract,
+    ) -> Self {
+        Self {
+            block_num,
+            transaction_hash: Bytes(transaction_hash),
+            transaction_index,
+            contract_index,
+
+            account_id: Bytes(call.account_id.clone()),
+            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
+        }
+    }
 }
 
 /** CREATE TABLE IF NOT EXISTS createSmartContracts (
@@ -1428,7 +1585,7 @@ impl CreateSmartContractRow {
   ownerAddress FixedString(20),
   contractAddress FixedString(20),
   callValue Int64,
-  data FixedString(32),
+  data String,
   callTokenValue Int64,
   tokenId Int64,
 ) ENGINE = ReplacingMergeTree()
