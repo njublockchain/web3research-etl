@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use documented::Documented;
 use itertools::MultiUnzip;
 use klickhouse::{Bytes, Row};
+use log::warn;
 use tron_grpc::{
     transaction_info::Log, AccountCreateContract, AccountPermissionUpdateContract,
     AccountUpdateContract, AssetIssueContract, BlockExtention, CancelAllUnfreezeV2Contract,
@@ -20,31 +21,20 @@ use tron_grpc::{
 };
 
 pub fn len_20_addr_from_any_vec(any_addr: Vec<u8>) -> Bytes {
-    // consider a EVM address
-    if any_addr.len() == 32 {
-        assert!(
-            any_addr.starts_with(&[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
-            "32-length EVM address should start with 12*00: {:X?}",
-            any_addr
-        ); // 12 bytes prefix + 20 bytes addr
-        return klickhouse::Bytes(any_addr[12..].to_vec());
+    // remove the T prefix 
+    if any_addr.starts_with(&[41]) {
+        let cut_addr = any_addr[1..].to_vec();
+        assert!(cut_addr.len() == 20);
+        return Bytes(cut_addr);
     }
 
-    // consider a TRON address
-    if any_addr.len() == 21 {
-        assert!(
-            any_addr.starts_with(&[41]),
-            "21-length TRON address should start with 41: {:X?}",
-            any_addr
-        );
-        return klickhouse::Bytes(any_addr[1..].to_vec());
-    }
-
-    panic!(
+    // fallback
+    warn!(
         "Address length {} is not considered yet! {:X?}",
         any_addr.len(),
         any_addr
-    )
+    );
+    return Bytes(any_addr);
 }
 
 /** CREATE TABLE IF NOT EXISTS blocks
@@ -55,7 +45,7 @@ pub fn len_20_addr_from_any_vec(any_addr: Vec<u8>) -> Bytes {
     `parentHash` FixedString(32),
     `number` Int64,
     `witnessId` Int64,
-    `witnessAddress` FixedString(20),
+    `witnessAddress` String,
     `version` Int32,
     `accountStateRoot` FixedString(32),
     `witnessSignature` String,
@@ -90,7 +80,7 @@ impl BlockRow {
             parent_hash: Bytes(header_raw_data.parent_hash),
             number: header_raw_data.number,
             witness_id: header_raw_data.witness_id,
-            witness_address: len_20_addr_from_any_vec(header_raw_data.witness_address),
+            witness_address: Bytes(header_raw_data.witness_address),
             version: header_raw_data.version,
             account_state_root: klickhouse::Bytes(header_raw_data.account_state_root),
             witness_signature: klickhouse::Bytes(header.witness_signature),
@@ -106,7 +96,7 @@ impl BlockRow {
     `index` Int64,
     `expiration` Int64,
     `authorityAccountNames` Array(LowCardinality(String)),
-    `authorityAccountAddresses` Array(FixedString(20)),
+    `authorityAccountAddresses` Array(String),
     `authorityPermissionNames` Array(LowCardinality(String)),
     `data` String,
     `contractType` LowCardinality(String),
@@ -122,7 +112,7 @@ impl BlockRow {
     `fee` Int64,
     `blockTimeStamp` Int64,
     `contractResult` String,
-    `contractAddress` FixedString(20),
+    `contractAddress` String,
     `energyUsage` Int64,
     `energyFee` Int64,
     `originEnergyUsage` Int64,
@@ -385,7 +375,7 @@ impl TransactionRow {
     `blockNum` Int64,
     `transactionHash` FixedString(32),
     `logIndex` Int32,
-    `address` FixedString(20),
+    `address` String,
     topic0 Nullable(FixedString(32)),
     topic1 Nullable(FixedString(32)),
     topic2 Nullable(FixedString(32)),
@@ -439,8 +429,8 @@ impl LogRow {
     `transactionHash` FixedString(32),
     `internalIndex` Int32,
     `hash` FixedString(32),
-    `callerAddress` FixedString(20),
-    `transferToAddress` FixedString(20),
+    `callerAddress` String,
+    `transferToAddress` String,
     `callValueInfos` Nested(tokenId String, callValue Int64),
     `note` String,
     `rejected` Bool,
@@ -509,8 +499,8 @@ impl InternalTransactionRow {
     `transactionIndex` Int64,
     `contractIndex` Int64,
 
-    `ownerAddress` FixedString(20),
-    `accountAddress` FixedString(20),
+    `ownerAddress` String,
+    `accountAddress` String,
     `type` Int32
 ) ENGINE = ReplacingMergeTree
 ORDER BY (ownerAddress, accountAddress, blockNum, transactionHash, contractIndex)
@@ -556,8 +546,8 @@ impl AccountCreateContractRow {
     `transactionIndex` Int64,
     `contractIndex` Int64,
 
-    `ownerAddress` FixedString(20),
-    `toAddress` FixedString(20),
+    `ownerAddress` String,
+    `toAddress` String,
     `amount` Int64,
 )
 ENGINE = ReplacingMergeTree
@@ -606,8 +596,8 @@ impl TransferContractRow {
     `contractIndex` Int64,
 
     `assetName` String,
-    `ownerAddress` FixedString(20),
-    `toAddress` FixedString(20),
+    `ownerAddress` String,
+    `toAddress` String,
     `amount` Int64,
 )
 ENGINE = ReplacingMergeTree
@@ -656,8 +646,8 @@ impl TransferAssetContractRow {
     `transactionIndex` Int64,
     `contractIndex` Int64,
 
-    `ownerAddress` FixedString(20),
-    `voteAddress` Array(FixedString(20)),
+    `ownerAddress` String,
+    `voteAddress` Array(String),
     `support` Bool,
     `count` Int32,
 ) ENGINE = ReplacingMergeTree
@@ -709,9 +699,9 @@ impl VoteAssetContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(20),
+  ownerAddress String,
   votes Nested(
-    voteAddress FixedString(20),
+    voteAddress String,
     voteCount Int64
   ),
   support bool,
@@ -782,7 +772,7 @@ impl Vote {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(20),
+  ownerAddress String,
   url String,
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (ownerAddress, url, blockNum, transactionHash, contractIndex)
@@ -826,7 +816,7 @@ impl WitnessCreateContractRow {
   contractIndex Int64,
 
   id String,
-  ownerAddress FixedString(20),
+  ownerAddress String,
   name String,
   abbr String,
   totalSupply Int64,
@@ -918,7 +908,7 @@ CREATE TABLE IF NOT EXISTS witnessUpdateContracts (
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(20),
+  ownerAddress String,
   updateUrl String,
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (ownerAddress, blockNum, transactionHash, contractIndex)
@@ -962,8 +952,8 @@ impl WitnessUpdateContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(20),
-  toAddress FixedString(20),
+  ownerAddress String,
+  toAddress String,
   assetName String,
   amount Int64,
 ) ENGINE = ReplacingMergeTree()
@@ -1011,7 +1001,7 @@ impl ParticipateAssetIssueContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(20),
+  ownerAddress String,
   accountName String,
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (ownerAddress, accountName, blockNum, transactionHash, contractIndex)
@@ -1055,11 +1045,11 @@ impl AccountUpdateContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(20),
+  ownerAddress String,
   frozenBalance Int64,
   frozenDuration Int64,
   resource Int32,
-  receiverAddress FixedString(20),
+  receiverAddress String,
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (ownerAddress, receiverAddress, resource, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
@@ -1107,9 +1097,9 @@ impl FreezeBalanceContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(20),
+  ownerAddress String,
   resource Int32,
-  receiverAddress FixedString(20),
+  receiverAddress String,
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (ownerAddress, receiverAddress, resource, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
@@ -1154,7 +1144,7 @@ impl UnfreezeBalanceContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(20),
+  ownerAddress String,
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (ownerAddress, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
@@ -1195,7 +1185,7 @@ impl WithdrawBalanceContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(20),
+  ownerAddress String,
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (ownerAddress, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
@@ -1236,7 +1226,7 @@ impl UnfreezeAssetContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(20),
+  ownerAddress String,
   description String,
   url String,
   newLimit Int64,
@@ -1289,7 +1279,7 @@ impl UpdateAssetContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(20),
+  ownerAddress String,
   parameters Nested(
     key Int64,
     value Int64
@@ -1336,7 +1326,7 @@ impl ProposalCreateContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(20),
+  ownerAddress String,
   proposalId Int64,
   isAddApproval Bool,
 ) ENGINE = ReplacingMergeTree()
@@ -1383,7 +1373,7 @@ impl ProposalApproveContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(20),
+  ownerAddress String,
   proposalId Int64,
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (ownerAddress, blockNum, transactionHash, contractIndex)
@@ -1428,7 +1418,7 @@ impl ProposalDeleteContractRow {
   contractIndex Int64,
 
   accountId String,
-  ownerAddress FixedString(20),
+  ownerAddress String,
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (ownerAddress, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
@@ -1471,10 +1461,10 @@ impl SetAccountIdContractRow {
     transactionIndex Int64,
     contractIndex Int64,
 
-    ownerAddress FixedString(20),
+    ownerAddress String,
 
-    originAddress Nullable(FixedString(20)),
-    contractAddress Nullable(FixedString(20)),
+    originAddress Nullable(String),
+    contractAddress Nullable(String),
     abi Nullable(String),
     bytecode Nullable(String),
     callValue Nullable(Int64),
@@ -1582,8 +1572,8 @@ impl CreateSmartContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(20),
-  contractAddress FixedString(20),
+  ownerAddress String,
+  contractAddress String,
   callValue Int64,
   data String,
   callTokenValue Int64,
@@ -1638,8 +1628,8 @@ impl TriggerSmartContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(20),
-  contractAddress FixedString(20),
+  ownerAddress String,
+  contractAddress String,
   consumeUserResourcePercent Int64,
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (ownerAddress, contractAddress, blockNum, transactionHash, contractIndex)
@@ -1685,7 +1675,7 @@ impl UpdateSettingContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(20),
+  ownerAddress String,
   firstTokenId String,
   firstTokenBalance Int64,
   secondTokenId String,
@@ -1738,7 +1728,7 @@ impl ExchangeCreateContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(20),
+  ownerAddress String,
   exchangeId Int64,
   tokenId String,
   quant Int64,
@@ -1788,7 +1778,7 @@ impl ExchangeInjectContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(20),
+  ownerAddress String,
   exchangeId Int64,
   tokenId String,
   quant Int64,
@@ -1838,7 +1828,7 @@ impl ExchangeWithdrawContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(20),
+  ownerAddress String,
   exchangeId Int64,
   tokenId String,
   quant Int64,
@@ -1891,8 +1881,8 @@ impl ExchangeTransactionContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(20),
-  contractAddress FixedString(20),
+  ownerAddress String,
+  contractAddress String,
   originEnergyLimit Int64,
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (ownerAddress, contractAddress, blockNum, transactionHash, contractIndex)
@@ -1938,7 +1928,7 @@ impl UpdateEnergyLimitContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(20),
+  ownerAddress String,
 
   ownerPermissionType Nullable(Int32),
   ownerPermissionId Nullable(Int32),
@@ -2193,8 +2183,8 @@ impl AccountPermissionUpdateContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(20),
-  contractAddress FixedString(20),
+  ownerAddress String,
+  contractAddress String,
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (ownerAddress, contractAddress, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
@@ -2236,7 +2226,7 @@ impl ClearAbiContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(20),
+  ownerAddress String,
   brokerage Int32,
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (ownerAddress, blockNum, transactionHash, contractIndex)
@@ -2279,7 +2269,7 @@ impl UpdateBrokerageContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  transparentFromAddress FixedString(20),
+  transparentFromAddress String,
   fromAmount Int64,
 
   spendValueCommitment String,
@@ -2297,7 +2287,7 @@ impl UpdateBrokerageContractRow {
   receiveZkproof String,
 
   bindingSignature FixedString(64),
-  transparentToAddress FixedString(20),
+  transparentToAddress String,
   toAmount Int64,
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (transparentFromAddress, transparentToAddress, blockNum, transactionHash, contractIndex)
@@ -2475,7 +2465,7 @@ impl ShieldedTransferContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(20),
+  ownerAddress String,
   sellTokenId String,
   sellTokenQuantity Int64,
   buyTokenId String,
@@ -2527,7 +2517,7 @@ impl MarketSellAssetContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(20),
+  ownerAddress String,
   orderId String,
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (ownerAddress, orderId, blockNum, transactionHash, contractIndex)
@@ -2571,7 +2561,7 @@ impl MarketCancelOrderContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(20),
+  ownerAddress String,
   frozenBalance Int64,
   resource Int32,
 ) ENGINE = ReplacingMergeTree()
@@ -2619,7 +2609,7 @@ impl FreezeBalanceV2ContractRow {
     `transactionIndex` Int64,
     `contractIndex` Int64,
 
-    `ownerAddress` FixedString(20),
+    `ownerAddress` String,
     `unfreezeBalance` Int64,
     `resource` Int32,
 ) ENGINE = ReplacingMergeTree
@@ -2667,7 +2657,7 @@ impl UnfreezeBalanceV2ContractRow {
     `transactionIndex` Int64,
     `contractIndex` Int64,
 
-    `ownerAddress` FixedString(20),
+    `ownerAddress` String,
 ) ENGINE = ReplacingMergeTree
 ORDER BY (ownerAddress, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
@@ -2708,10 +2698,10 @@ impl WithdrawExpireUnfreezeContractRow {
     `transactionIndex` Int64,
     `contractIndex` Int64,
 
-    `ownerAddress` FixedString(20),
+    `ownerAddress` String,
     `resource` Int32,
     `balance` Int64,
-    `receiverAddress` FixedString(20),
+    `receiverAddress` String,
     `lock` Boolean,
     `lockPeriod` Int64,
 ) ENGINE = ReplacingMergeTree
@@ -2764,10 +2754,10 @@ impl DelegateResourceContractRow {
     `transactionIndex` Int64,
     `contractIndex` Int64,
 
-    `ownerAddress` FixedString(20),
+    `ownerAddress` String,
     `resource` Int32,
     `balance` Int64,
-    `receiverAddress` FixedString(20),
+    `receiverAddress` String,
 ) ENGINE = ReplacingMergeTree
 ORDER BY (ownerAddress, resource, receiverAddress, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
@@ -2814,7 +2804,7 @@ impl UndelegateResourceContractRow {
     `transactionIndex` Int64,
     `contractIndex` Int64,
 
-    `ownerAddress` FixedString(20),
+    `ownerAddress` String,
 ) ENGINE = ReplacingMergeTree
 ORDER BY (ownerAddress, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
