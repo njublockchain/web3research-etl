@@ -21,11 +21,41 @@ use tron_grpc::{
 };
 
 pub fn len_20_addr_from_any_vec(any_addr: Vec<u8>) -> Bytes {
+    // consider a EVM address
+    if any_addr.len() == 32 {
+        assert!(
+            any_addr.starts_with(&[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+            "32-length EVM address should start with 12*00: {:X?}",
+            any_addr
+        ); // 12 bytes prefix + 20 bytes addr
+        return Bytes(any_addr[12..].to_vec());
+    }
+
+    // consider a TRON address
+    if any_addr.len() == 21 {
+        assert!(
+            any_addr.starts_with(&[0x41]),
+            "21-length TRON address should start with 41: {:X?}",
+            any_addr
+        );
+        return Bytes(any_addr[1..].to_vec());
+    }
+
+    // consider a ETH address
+    if any_addr.len() == 20 {
+        return Bytes(any_addr);
+    }
+
     // remove the T prefix 
-    if any_addr.starts_with(&[41]) {
+    if any_addr.starts_with(&[0x41]) {
         let cut_addr = any_addr[1..].to_vec();
         assert!(cut_addr.len() == 20);
         return Bytes(cut_addr);
+    }
+
+    // if null
+    if any_addr.is_empty() {
+        return Bytes::default();
     }
 
     // fallback
@@ -111,8 +141,8 @@ impl BlockRow {
     `constantResult` String,
     `fee` Int64,
     `blockTimeStamp` Int64,
-    `contractResult` String,
-    `contractAddress` String,
+    `contractResult` Nullable(String),
+    `contractAddress` Nullable(String),
     `energyUsage` Int64,
     `energyFee` Int64,
     `originEnergyUsage` Int64,
@@ -143,7 +173,7 @@ impl BlockRow {
 )
 ENGINE = ReplacingMergeTree
 ORDER BY (blockNum, contractType, contractAddress, exchangeId, orderId, result, hash)
-SETTINGS index_granularity = 8192; */
+SETTINGS index_granularity = 8192, allow_nullable_key=1; */
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct TransactionRow {
@@ -172,7 +202,7 @@ pub struct TransactionRow {
 
     pub fee: i64,
     pub block_time_stamp: i64,
-    pub contract_result: Bytes,
+    pub contract_result: Option<Bytes>,
     pub contract_address: Option<Bytes>,
 
     pub energy_usage: i64,
@@ -300,8 +330,8 @@ impl TransactionRow {
             fee: transaction_info.map_or(0, |transaction_info| transaction_info.fee),
             block_time_stamp: transaction_info
                 .map_or(0, |transaction_info| transaction_info.block_time_stamp),
-            contract_result: transaction_info.map_or(Bytes::default(), |transaction_info| {
-                Bytes(transaction_info.contract_result[0].clone())
+            contract_result: transaction_info.map_or(None, |transaction_info| {
+                Some(Bytes(transaction_info.contract_result[0].clone()))
             }),
             contract_address: transaction_info.map_or(None, |transaction_info| {
                 Some(len_20_addr_from_any_vec(
@@ -431,7 +461,10 @@ impl LogRow {
     `hash` FixedString(32),
     `callerAddress` String,
     `transferToAddress` String,
-    `callValueInfos` Nested(tokenId String, callValue Int64),
+    `callValueInfos` Nested(
+        tokenId String, 
+        callValue Int64
+    ),
     `note` String,
     `rejected` Bool,
     `extra` String
@@ -1297,7 +1330,10 @@ pub struct ProposalCreateContractRow {
     pub contract_index: i64,
 
     pub owner_address: Bytes,
-    pub parameters: HashMap<i64, i64>,
+    #[klickhouse(rename = "parameters.key")]
+    pub parameters_key: Vec<i64>,
+    #[klickhouse(rename = "parameters.value")]
+    pub parameters_value: Vec<i64>,
 }
 
 impl ProposalCreateContractRow {
@@ -1315,7 +1351,8 @@ impl ProposalCreateContractRow {
             contract_index,
 
             owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
-            parameters: call.parameters.clone(),
+            parameters_key: call.parameters.keys().cloned().collect(),
+            parameters_value: call.parameters.values().cloned().collect(),
         }
     }
 }

@@ -859,7 +859,7 @@ pub(crate) async fn init(
                     proposal_create_contract_row_list.to_vec()
                 ),
                 klient.insert_native_block(
-                    "INSERT INTO protosalApproveContracts FORMAT native",
+                    "INSERT INTO proposalApproveContracts FORMAT native",
                     proposal_approve_contract_row_list.to_vec()
                 ),
                 klient.insert_native_block(
