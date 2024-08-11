@@ -1,6 +1,5 @@
 use std::error::Error;
 
-use bitcoin::witness;
 use documented::Documented;
 use log::{debug, info, warn};
 use tron_grpc::{
@@ -280,9 +279,9 @@ pub(crate) async fn init(
     let mut account_create_contract_row_list = Vec::new();
     let mut transfer_contract_row_list = Vec::new();
     let mut transfer_asset_contract_row_list = Vec::new();
-    let mut vote_asset_contract_row_list = Vec::new(); //TODO
+    let mut vote_asset_contract_row_list = Vec::new();
     let mut vote_witness_contract_row_list = Vec::new();
-    let mut witness_create_contract_row_list = Vec::new(); //TODO
+    let mut witness_create_contract_row_list = Vec::new();
     let mut asset_issue_contract_row_list = Vec::new();
     let mut witness_update_contract_row_list = Vec::new();
     let mut participate_asset_issue_contract_row_list = Vec::new();
@@ -292,11 +291,11 @@ pub(crate) async fn init(
     let mut withdraw_balance_contract_row_list = Vec::new();
     let mut unfreeze_asset_contract_row_list = Vec::new();
     let mut update_asset_contract_row_list = Vec::new();
-    let mut proposal_create_contract_row_list = Vec::new(); //TODO
-    let mut proposal_approve_contract_row_list = Vec::new(); //TODO
-    let mut proposal_delete_contract_row_list = Vec::new(); //TODO
-    let mut set_account_id_contract_row_list = Vec::new(); //TODO
-                                                           // let mut custom_contract_row_list = Vec::new();//TODO
+    let mut proposal_create_contract_row_list = Vec::new();
+    let mut proposal_approve_contract_row_list = Vec::new();
+    let mut proposal_delete_contract_row_list = Vec::new();
+    let mut set_account_id_contract_row_list = Vec::new();
+    // let mut custom_contract_row_list = Vec::new();//TODO
     let mut create_smart_contract_row_list = Vec::new();
     let mut trigger_smart_contract_row_list = Vec::new();
     // let mut get_contract_row_list = Vec::new();//TODO
