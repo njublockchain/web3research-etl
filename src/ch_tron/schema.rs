@@ -9,60 +9,40 @@ use tron_grpc::{
     ClearAbiContract, CreateSmartContract, DelegateResourceContract, ExchangeCreateContract,
     ExchangeInjectContract, ExchangeTransactionContract, ExchangeWithdrawContract,
     FreezeBalanceContract, FreezeBalanceV2Contract, InternalTransaction, MarketCancelOrderContract,
-    MarketSellAssetContract, ParticipateAssetIssueContract,
-    ShieldedTransferContract, TransactionExtention, TransactionInfo, TransferAssetContract,
-    TransferContract, TriggerSmartContract, UnDelegateResourceContract, UnfreezeAssetContract,
+    MarketSellAssetContract, ParticipateAssetIssueContract, ShieldedTransferContract,
+    TransactionExtention, TransactionInfo, TransferAssetContract, TransferContract,
+    TriggerSmartContract, UnDelegateResourceContract, UnfreezeAssetContract,
     UnfreezeBalanceContract, UnfreezeBalanceV2Contract, UpdateAssetContract,
     UpdateBrokerageContract, UpdateEnergyLimitContract, UpdateSettingContract, VoteWitnessContract,
     WithdrawBalanceContract, WithdrawExpireUnfreezeContract, WitnessUpdateContract,
 };
 
-pub fn t_addr_from_21(len_21_addr: Vec<u8>) -> String {
-    if len_21_addr.len() == 0 {
-        return "".to_owned();
+pub fn len_20_addr_from_any_vec(any_addr: Vec<u8>) -> Bytes {
+    // consider a EVM address
+    if any_addr.len() == 32 {
+        assert!(
+            any_addr.starts_with(&[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+            "32-length EVM address should start with 12*00: {:X?}",
+            any_addr
+        ); // 12 bytes prefix + 20 bytes addr
+        return klickhouse::Bytes(any_addr[12..].to_vec());
     }
 
-    let len_21_addr = if len_21_addr.len() > 21 {
-        len_21_addr[0..21].to_vec()
-    } else {
-        len_21_addr
-    };
-    assert!(
-        len_21_addr.len() == 20 || len_21_addr.len() == 21 || len_21_addr.len() > 21,
-        "{:X?}",
-        len_21_addr
-    );
-
-    if len_21_addr.len() == 20 {
-        let mut addr = [0x41].to_vec();
-        addr.extend(len_21_addr);
-
-        bs58::encode(addr).with_check().into_string()
-    } else {
-        let t_addr = bs58::encode(&len_21_addr).with_check().into_string();
-        // assert!(t_addr.starts_with("T"), "{}", t_addr);
-
-        t_addr
-    }
-}
-
-pub fn t_addr_from_32(len_32_addr: Vec<u8>) -> String {
-    if len_32_addr.len() == 0 {
-        return "".to_owned();
+    // consider a TRON address
+    if any_addr.len() == 21 {
+        assert!(
+            any_addr.starts_with(&[41]),
+            "21-length TRON address should start with 41: {:X?}",
+            any_addr
+        );
+        return klickhouse::Bytes(any_addr[1..].to_vec());
     }
 
-    assert!(len_32_addr.len() == 32);
-
-    let base = len_32_addr
-        .strip_prefix(&[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
-        .unwrap()
-        .to_vec();
-    let mut addr = [0x41].to_vec();
-    addr.extend(base);
-
-    let t_addr = bs58::encode(addr).with_check().into_string();
-    assert!(t_addr.starts_with("T"));
-    t_addr
+    panic!(
+        "Address length {} is not considered yet! {:X?}",
+        any_addr.len(),
+        any_addr
+    )
 }
 
 /** CREATE TABLE IF NOT EXISTS blocks
@@ -73,7 +53,7 @@ pub fn t_addr_from_32(len_32_addr: Vec<u8>) -> String {
     `parentHash` FixedString(32),
     `number` Int64,
     `witnessId` Int64,
-    `witnessAddress` FixedString(34),
+    `witnessAddress` FixedString(20),
     `version` Int32,
     `accountStateRoot` FixedString(32),
     `witnessSignature` String,
@@ -90,7 +70,7 @@ pub struct BlockRow {
     pub parent_hash: Bytes,
     pub number: i64,
     pub witness_id: i64,
-    pub witness_address: String,
+    pub witness_address: Bytes,
     pub version: i32,
     pub account_state_root: Bytes,
     pub witness_signature: Bytes,
@@ -108,7 +88,7 @@ impl BlockRow {
             parent_hash: Bytes(header_raw_data.parent_hash),
             number: header_raw_data.number,
             witness_id: header_raw_data.witness_id,
-            witness_address: t_addr_from_21(header_raw_data.witness_address),
+            witness_address: len_20_addr_from_any_vec(header_raw_data.witness_address),
             version: header_raw_data.version,
             account_state_root: klickhouse::Bytes(header_raw_data.account_state_root),
             witness_signature: klickhouse::Bytes(header.witness_signature),
@@ -124,7 +104,7 @@ impl BlockRow {
     `index` Int64,
     `expiration` Int64,
     `authorityAccountNames` Array(LowCardinality(String)),
-    `authorityAccountAddresses` Array(FixedString(34)),
+    `authorityAccountAddresses` Array(FixedString(20)),
     `authorityPermissionNames` Array(LowCardinality(String)),
     `data` String,
     `contractType` LowCardinality(String),
@@ -140,7 +120,7 @@ impl BlockRow {
     `fee` Int64,
     `blockTimeStamp` Int64,
     `contractResult` String,
-    `contractAddress` FixedString(34),
+    `contractAddress` FixedString(20),
     `energyUsage` Int64,
     `energyFee` Int64,
     `originEnergyUsage` Int64,
@@ -201,7 +181,7 @@ pub struct TransactionRow {
     pub fee: i64,
     pub block_time_stamp: i64,
     pub contract_result: Bytes,
-    pub contract_address: String,
+    pub contract_address: Option<Bytes>,
 
     pub energy_usage: i64,
     pub energy_fee: i64,
@@ -331,8 +311,10 @@ impl TransactionRow {
             contract_result: transaction_info.map_or(Bytes::default(), |transaction_info| {
                 Bytes(transaction_info.contract_result[0].clone())
             }),
-            contract_address: transaction_info.map_or("".to_owned(), |transaction_info| {
-                t_addr_from_21(transaction_info.contract_address.clone())
+            contract_address: transaction_info.map_or(None, |transaction_info| {
+                Some(len_20_addr_from_any_vec(
+                    transaction_info.contract_address.clone(),
+                ))
             }),
             energy_usage: receipt.clone().map_or(0, |receipt| receipt.energy_usage),
             energy_fee: receipt.clone().map_or(0, |receipt| receipt.energy_fee),
@@ -401,7 +383,7 @@ impl TransactionRow {
     `blockNum` Int64,
     `transactionHash` FixedString(32),
     `logIndex` Int32,
-    `address` FixedString(34),
+    `address` FixedString(20),
     topic0 Nullable(FixedString(32)),
     topic1 Nullable(FixedString(32)),
     topic2 Nullable(FixedString(32)),
@@ -417,7 +399,7 @@ pub struct LogRow {
     pub block_num: i64,
     pub transaction_hash: Bytes,
     pub log_index: i32,
-    pub address: String,
+    pub address: Bytes,
 
     pub topic0: Option<Bytes>,
     pub topic1: Option<Bytes>,
@@ -439,7 +421,7 @@ impl LogRow {
             block_num,
             transaction_hash: Bytes(transaction_hash),
             log_index,
-            address: t_addr_from_21(log.address.clone()),
+            address: len_20_addr_from_any_vec(log.address.clone()),
             topic0: topics.get(0).cloned(),
             topic1: topics.get(1).cloned(),
             topic2: topics.get(2).cloned(),
@@ -455,8 +437,8 @@ impl LogRow {
     `transactionHash` FixedString(32),
     `internalIndex` Int32,
     `hash` FixedString(32),
-    `callerAddress` FixedString(34),
-    `transferToAddress` FixedString(34),
+    `callerAddress` FixedString(20),
+    `transferToAddress` FixedString(20),
     `callValueInfos` Nested(tokenId String, callValue Int64),
     `note` String,
     `rejected` Bool,
@@ -474,8 +456,8 @@ pub struct InternalTransactionRow {
     pub internal_index: i32,
 
     pub hash: Bytes,
-    pub caller_address: String,
-    pub transfer_to_address: String,
+    pub caller_address: Bytes,
+    pub transfer_to_address: Bytes,
 
     #[klickhouse(rename = "callValueInfos.tokenId")]
     pub call_value_infos_token_id: Vec<String>,
@@ -505,8 +487,8 @@ impl InternalTransactionRow {
             internal_index,
 
             hash: Bytes(internal.hash.clone()),
-            caller_address: t_addr_from_21(internal.caller_address.clone()),
-            transfer_to_address: t_addr_from_21(internal.transfer_to_address.clone()),
+            caller_address: len_20_addr_from_any_vec(internal.caller_address.clone()),
+            transfer_to_address: len_20_addr_from_any_vec(internal.transfer_to_address.clone()),
             call_value_infos_token_id,
             call_value_infos_call_value,
             note: Bytes(internal.note.clone()),
@@ -525,8 +507,8 @@ impl InternalTransactionRow {
     `transactionIndex` Int64,
     `contractIndex` Int64,
 
-    `ownerAddress` FixedString(34),
-    `accountAddress` FixedString(34),
+    `ownerAddress` FixedString(20),
+    `accountAddress` FixedString(20),
     `type` Int32
 ) ENGINE = ReplacingMergeTree
 ORDER BY (ownerAddress, accountAddress, blockNum, transactionHash, contractIndex)
@@ -539,8 +521,8 @@ pub struct AccountCreateContractRow {
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub owner_address: String,
-    pub account_address: String,
+    pub owner_address: Bytes,
+    pub account_address: Bytes,
     pub r#type: i32,
 }
 
@@ -558,8 +540,8 @@ impl AccountCreateContractRow {
             transaction_index,
             contract_index,
 
-            owner_address: t_addr_from_21(call.owner_address.clone()),
-            account_address: t_addr_from_21(call.account_address.clone()),
+            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
+            account_address: len_20_addr_from_any_vec(call.account_address.clone()),
             r#type: call.r#type,
         }
     }
@@ -572,8 +554,8 @@ impl AccountCreateContractRow {
     `transactionIndex` Int64,
     `contractIndex` Int64,
 
-    `ownerAddress` FixedString(34),
-    `toAddress` FixedString(34),
+    `ownerAddress` FixedString(20),
+    `toAddress` FixedString(20),
     `amount` Int64,
 )
 ENGINE = ReplacingMergeTree
@@ -588,8 +570,8 @@ pub struct TransferContractRow {
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub owner_address: String,
-    pub to_address: String,
+    pub owner_address: Bytes,
+    pub to_address: Bytes,
     pub amount: i64,
 }
 
@@ -607,8 +589,8 @@ impl TransferContractRow {
             transaction_index,
             contract_index,
 
-            owner_address: t_addr_from_21(call.owner_address.clone()),
-            to_address: t_addr_from_21(call.to_address.clone()),
+            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
+            to_address: len_20_addr_from_any_vec(call.to_address.clone()),
             amount: call.amount,
         }
     }
@@ -622,8 +604,8 @@ impl TransferContractRow {
     `contractIndex` Int64,
 
     `assetName` String,
-    `ownerAddress` FixedString(34),
-    `toAddress` FixedString(34),
+    `ownerAddress` FixedString(20),
+    `toAddress` FixedString(20),
     `amount` Int64,
 )
 ENGINE = ReplacingMergeTree
@@ -638,8 +620,8 @@ pub struct TransferAssetContractRow {
     pub contract_index: i64,
 
     pub asset_name: Bytes,
-    pub owner_address: String,
-    pub to_address: String,
+    pub owner_address: Bytes,
+    pub to_address: Bytes,
     pub amount: i64,
 }
 
@@ -658,8 +640,8 @@ impl TransferAssetContractRow {
             contract_index,
 
             asset_name: klickhouse::Bytes(call.asset_name.clone()),
-            owner_address: t_addr_from_21(call.owner_address.clone()),
-            to_address: t_addr_from_21(call.to_address.clone()),
+            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
+            to_address: len_20_addr_from_any_vec(call.to_address.clone()),
             amount: call.amount,
         }
     }
@@ -671,9 +653,9 @@ impl TransferAssetContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(34),
+  ownerAddress FixedString(20),
   votes Nested(
-    voteAddress FixedString(34),
+    voteAddress FixedString(20),
     voteCount Int64
   ),
   support bool,
@@ -688,7 +670,7 @@ pub struct VoteWitnessContractRow {
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub owner_address: String,
+    pub owner_address: Bytes,
     #[klickhouse(rename = "votes.voteAddress")]
     pub votes_vote_address: Vec<Bytes>,
     #[klickhouse(rename = "votes.voteCount")]
@@ -710,11 +692,11 @@ impl VoteWitnessContractRow {
             transaction_index,
             contract_index,
 
-            owner_address: t_addr_from_21(call.owner_address.clone()),
+            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
             votes_vote_address: call
                 .votes
                 .iter()
-                .map(|vote| Bytes(vote.vote_address.clone()))
+                .map(|vote| len_20_addr_from_any_vec(vote.vote_address.clone()))
                 .collect(),
             votes_vote_count: call.votes.iter().map(|vote| vote.vote_count).collect(),
             support: call.support,
@@ -725,14 +707,14 @@ impl VoteWitnessContractRow {
 #[derive(Row, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct Vote {
-    vote_address: String,
+    vote_address: Bytes,
     vote_count: i64,
 }
 
 impl Vote {
     pub fn from_grpc(vote: tron_grpc::Vote) -> Self {
         Self {
-            vote_address: t_addr_from_21(vote.vote_address),
+            vote_address: len_20_addr_from_any_vec(vote.vote_address),
             vote_count: vote.vote_count,
         }
     }
@@ -744,7 +726,7 @@ impl Vote {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(34),
+  ownerAddress FixedString(20),
   url String,
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (ownerAddress, url, blockNum, transactionHash, contractIndex)
@@ -757,7 +739,7 @@ pub struct WitnessCreateContractRow {
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub owner_address: String,
+    pub owner_address: Bytes,
     pub url: String,
 }
 
@@ -768,7 +750,7 @@ pub struct WitnessCreateContractRow {
   contractIndex Int64,
 
   id String,
-  ownerAddress FixedString(34),
+  ownerAddress FixedString(20),
   name String,
   abbr String,
   totalSupply Int64,
@@ -798,7 +780,7 @@ pub struct AssetIssueContractRow {
     pub contract_index: i64,
 
     pub id: String,
-    pub owner_address: String,
+    pub owner_address: Bytes,
     pub name: Bytes,
     pub abbr: Bytes,
     pub total_supply: i64,
@@ -832,7 +814,7 @@ impl AssetIssueContractRow {
             contract_index,
 
             id: call.id.clone(),
-            owner_address: t_addr_from_21(call.owner_address.clone()),
+            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
             name: klickhouse::Bytes(call.name.clone()),
             abbr: klickhouse::Bytes(call.abbr.clone()),
             total_supply: call.total_supply,
@@ -860,7 +842,7 @@ CREATE TABLE IF NOT EXISTS witnessUpdateContracts (
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(34),
+  ownerAddress FixedString(20),
   updateUrl String,
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (ownerAddress, blockNum, transactionHash, contractIndex)
@@ -874,7 +856,7 @@ pub struct WitnessUpdateContractRow {
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub owner_address: String,
+    pub owner_address: Bytes,
     pub update_url: Bytes,
 }
 
@@ -892,7 +874,7 @@ impl WitnessUpdateContractRow {
             transaction_index,
             contract_index,
 
-            owner_address: t_addr_from_21(call.owner_address.clone()),
+            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
             update_url: klickhouse::Bytes(call.update_url.clone()),
         }
     }
@@ -904,8 +886,8 @@ impl WitnessUpdateContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(34),
-  toAddress FixedString(34),
+  ownerAddress FixedString(20),
+  toAddress FixedString(20),
   assetName String,
   amount Int64,
 ) ENGINE = ReplacingMergeTree()
@@ -919,8 +901,8 @@ pub struct ParticipateAssetIssueContractRow {
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub owner_address: String,
-    pub to_address: String,
+    pub owner_address: Bytes,
+    pub to_address: Bytes,
     pub asset_name: Bytes,
     pub amount: i64,
 }
@@ -939,8 +921,8 @@ impl ParticipateAssetIssueContractRow {
             transaction_index,
             contract_index,
 
-            owner_address: t_addr_from_21(call.owner_address.clone()),
-            to_address: t_addr_from_21(call.to_address.clone()),
+            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
+            to_address: len_20_addr_from_any_vec(call.to_address.clone()),
             asset_name: klickhouse::Bytes(call.asset_name.clone()),
             amount: call.amount,
         }
@@ -953,7 +935,7 @@ impl ParticipateAssetIssueContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(34),
+  ownerAddress FixedString(20),
   accountName String,
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (ownerAddress, accountName, blockNum, transactionHash, contractIndex)
@@ -967,7 +949,7 @@ pub struct AccountUpdateContractRow {
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub owner_address: String,
+    pub owner_address: Bytes,
     pub account_name: Bytes,
 }
 
@@ -985,7 +967,7 @@ impl AccountUpdateContractRow {
             transaction_index,
             contract_index,
 
-            owner_address: t_addr_from_21(call.owner_address.clone()),
+            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
             account_name: klickhouse::Bytes(call.account_name.clone()),
         }
     }
@@ -997,11 +979,11 @@ impl AccountUpdateContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(34),
+  ownerAddress FixedString(20),
   frozenBalance Int64,
   frozenDuration Int64,
   resource Int32,
-  receiverAddress FixedString(34),
+  receiverAddress FixedString(20),
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (ownerAddress, receiverAddress, resource, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
@@ -1014,11 +996,11 @@ pub struct FreezeBalanceContractRow {
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub owner_address: String,
+    pub owner_address: Bytes,
     pub frozen_balance: i64,
     pub frozen_duration: i64,
     pub resource: i32,
-    pub receiver_address: String,
+    pub receiver_address: Bytes,
 }
 impl FreezeBalanceContractRow {
     pub fn from_grpc(
@@ -1034,11 +1016,11 @@ impl FreezeBalanceContractRow {
             transaction_index,
             contract_index,
 
-            owner_address: t_addr_from_21(call.owner_address.clone()),
+            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
             frozen_balance: call.frozen_balance,
             frozen_duration: call.frozen_duration,
             resource: call.resource,
-            receiver_address: t_addr_from_21(call.receiver_address.clone()),
+            receiver_address: len_20_addr_from_any_vec(call.receiver_address.clone()),
         }
     }
 }
@@ -1049,9 +1031,9 @@ impl FreezeBalanceContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(34),
+  ownerAddress FixedString(20),
   resource Int32,
-  receiverAddress FixedString(34),
+  receiverAddress FixedString(20),
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (ownerAddress, receiverAddress, resource, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
@@ -1064,9 +1046,9 @@ pub struct UnfreezeBalanceContractRow {
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub owner_address: String,
+    pub owner_address: Bytes,
     pub resource: i32,
-    pub receiver_address: String,
+    pub receiver_address: Bytes,
 }
 
 impl UnfreezeBalanceContractRow {
@@ -1083,9 +1065,9 @@ impl UnfreezeBalanceContractRow {
             transaction_index,
             contract_index,
 
-            owner_address: t_addr_from_21(call.owner_address.clone()),
+            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
             resource: call.resource,
-            receiver_address: t_addr_from_21(call.receiver_address.clone()),
+            receiver_address: len_20_addr_from_any_vec(call.receiver_address.clone()),
         }
     }
 }
@@ -1096,7 +1078,7 @@ impl UnfreezeBalanceContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(34),
+  ownerAddress FixedString(20),
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (ownerAddress, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
@@ -1109,7 +1091,7 @@ pub struct WithdrawBalanceContractRow {
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub owner_address: String,
+    pub owner_address: Bytes,
 }
 
 impl WithdrawBalanceContractRow {
@@ -1126,7 +1108,7 @@ impl WithdrawBalanceContractRow {
             transaction_index,
             contract_index,
 
-            owner_address: t_addr_from_21(call.owner_address.clone()),
+            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
         }
     }
 }
@@ -1137,7 +1119,7 @@ impl WithdrawBalanceContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(34),
+  ownerAddress FixedString(20),
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (ownerAddress, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
@@ -1150,7 +1132,7 @@ pub struct UnfreezeAssetContractRow {
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub owner_address: String,
+    pub owner_address: Bytes,
 }
 
 impl UnfreezeAssetContractRow {
@@ -1167,7 +1149,7 @@ impl UnfreezeAssetContractRow {
             transaction_index,
             contract_index,
 
-            owner_address: t_addr_from_21(call.owner_address.clone()),
+            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
         }
     }
 }
@@ -1178,7 +1160,7 @@ impl UnfreezeAssetContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(34),
+  ownerAddress FixedString(20),
   description String,
   url String,
   newLimit Int64,
@@ -1195,7 +1177,7 @@ pub struct UpdateAssetContractRow {
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub owner_address: String,
+    pub owner_address: Bytes,
     pub description: Bytes,
     pub url: Bytes,
     pub new_limit: i64,
@@ -1216,7 +1198,7 @@ impl UpdateAssetContractRow {
             transaction_index,
             contract_index,
 
-            owner_address: t_addr_from_21(call.owner_address.clone()),
+            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
             description: klickhouse::Bytes(call.description.clone()),
             url: klickhouse::Bytes(call.url.clone()),
             new_limit: call.new_limit,
@@ -1231,7 +1213,7 @@ impl UpdateAssetContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(34),
+  ownerAddress FixedString(20),
   parameters Nested(
     key Int64,
     value Int64
@@ -1248,7 +1230,7 @@ pub struct ProposalCreateContractRow {
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub owner_address: String,
+    pub owner_address: Bytes,
     pub parameters: HashMap<i64, i64>,
 }
 
@@ -1258,7 +1240,7 @@ pub struct ProposalCreateContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(34),
+  ownerAddress FixedString(20),
   proposalId Int64,
   isAddApproval Bool,
 ) ENGINE = ReplacingMergeTree()
@@ -1273,7 +1255,7 @@ pub struct ProposalApproveContractRow {
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub owner_address: String,
+    pub owner_address: Bytes,
     pub proposal_id: i64,
     pub is_add_approval: bool,
 }
@@ -1284,7 +1266,7 @@ pub struct ProposalApproveContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(34),
+  ownerAddress FixedString(20),
   proposalId Int64,
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (ownerAddress, blockNum, transactionHash, contractIndex)
@@ -1298,7 +1280,7 @@ pub struct ProposalDeleteContractRow {
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub owner_address: String,
+    pub owner_address: Bytes,
     pub proposal_id: i64,
 }
 
@@ -1309,7 +1291,7 @@ pub struct ProposalDeleteContractRow {
   contractIndex Int64,
 
   accountId FixedString(32),
-  ownerAddress FixedString(34),
+  ownerAddress FixedString(20),
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (ownerAddress, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
@@ -1323,7 +1305,7 @@ pub struct SetAccountIdContractRow {
     pub contract_index: i64,
 
     pub account_id: Bytes,
-    pub owner_address: String,
+    pub owner_address: Bytes,
 }
 
 /** CREATE TABLE IF NOT EXISTS createSmartContracts (
@@ -1332,10 +1314,10 @@ pub struct SetAccountIdContractRow {
     transactionIndex Int64,
     contractIndex Int64,
 
-    ownerAddress FixedString(34),
+    ownerAddress FixedString(20),
 
-    originAddress Nullable(FixedString(34)),
-    contractAddress Nullable(FixedString(34)),
+    originAddress Nullable(FixedString(20)),
+    contractAddress Nullable(FixedString(20)),
     abi Nullable(String),
     bytecode Nullable(String),
     callValue Nullable(Int64),
@@ -1360,7 +1342,7 @@ pub struct CreateSmartContractRow {
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub owner_address: String,
+    pub owner_address: Bytes,
     #[klickhouse(flatten)]
     pub new_contract: SmartContractField,
     pub call_token_value: i64,
@@ -1370,8 +1352,8 @@ pub struct CreateSmartContractRow {
 #[derive(Row, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct SmartContractField {
-    pub origin_address: Option<String>,
-    pub contract_address: Option<String>,
+    pub origin_address: Option<Bytes>,
+    pub contract_address: Option<Bytes>,
     pub abi: Option<String>, // save as string
     pub bytecode: Option<Bytes>,
     pub call_value: Option<i64>,
@@ -1391,34 +1373,43 @@ impl CreateSmartContractRow {
         contract_index: i64,
         call: &CreateSmartContract,
     ) -> Self {
-        let new_contract = call
-        .new_contract.clone();
+        let new_contract = call.new_contract.clone();
         Self {
             block_num,
             transaction_hash: klickhouse::Bytes(transaction_hash),
             transaction_index,
             contract_index,
-            owner_address: t_addr_from_21(call.owner_address.clone()),
+            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
             new_contract: SmartContractField {
-                origin_address: new_contract.as_ref()
-                    .map_or(None, |sc| Some(t_addr_from_21(sc.origin_address.clone()))),
-                contract_address: new_contract.as_ref()
-                    .map_or(None, |sc| Some(t_addr_from_21(sc.contract_address.clone()))),
+                origin_address: new_contract.as_ref().map_or(None, |sc| {
+                    Some(len_20_addr_from_any_vec(sc.origin_address.clone()))
+                }),
+                contract_address: new_contract.as_ref().map_or(None, |sc| {
+                    Some(len_20_addr_from_any_vec(sc.contract_address.clone()))
+                }),
                 abi: new_contract.as_ref().map_or(None, |sc| {
-                    sc.abi.clone()
+                    sc.abi
+                        .clone()
                         .map_or(None, |abi| Some(serde_json::to_string(&abi).unwrap()))
                 }),
-                bytecode: new_contract.as_ref()
+                bytecode: new_contract
+                    .as_ref()
                     .map_or(None, |sc| Some(klickhouse::Bytes(sc.bytecode.clone()))),
                 call_value: new_contract.as_ref().map_or(None, |sc| Some(sc.call_value)),
-                consume_user_resource_percent: new_contract.as_ref()
+                consume_user_resource_percent: new_contract
+                    .as_ref()
                     .map_or(None, |sc| Some(sc.consume_user_resource_percent)),
-                name: new_contract.as_ref().map_or(None, |sc| Some(sc.name.clone())),
-                origin_energy_limit: new_contract.as_ref()
+                name: new_contract
+                    .as_ref()
+                    .map_or(None, |sc| Some(sc.name.clone())),
+                origin_energy_limit: new_contract
+                    .as_ref()
                     .map_or(None, |sc| Some(sc.origin_energy_limit)),
-                code_hash: new_contract.as_ref()
+                code_hash: new_contract
+                    .as_ref()
                     .map_or(None, |sc| Some(klickhouse::Bytes(sc.code_hash.clone()))),
-                trx_hash: new_contract.as_ref()
+                trx_hash: new_contract
+                    .as_ref()
                     .map_or(None, |sc| Some(klickhouse::Bytes(sc.trx_hash.clone()))),
                 version: new_contract.as_ref().map_or(None, |sc| Some(sc.version)),
             },
@@ -1434,8 +1425,8 @@ impl CreateSmartContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(34),
-  contractAddress FixedString(34),
+  ownerAddress FixedString(20),
+  contractAddress FixedString(20),
   callValue Int64,
   data FixedString(32),
   callTokenValue Int64,
@@ -1452,8 +1443,8 @@ pub struct TriggerSmartContractRow {
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub owner_address: String,
-    pub contract_address: String,
+    pub owner_address: Bytes,
+    pub contract_address: Bytes,
     pub call_value: i64,
     pub data: Bytes,
     pub call_token_value: i64,
@@ -1474,8 +1465,8 @@ impl TriggerSmartContractRow {
             transaction_index,
             contract_index,
 
-            owner_address: t_addr_from_21(call.owner_address.clone()),
-            contract_address: t_addr_from_21(call.contract_address.clone()),
+            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
+            contract_address: len_20_addr_from_any_vec(call.contract_address.clone()),
             call_value: call.call_value,
             data: klickhouse::Bytes(call.data.clone()),
             call_token_value: call.call_token_value,
@@ -1490,8 +1481,8 @@ impl TriggerSmartContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(34),
-  contractAddress FixedString(34),
+  ownerAddress FixedString(20),
+  contractAddress FixedString(20),
   consumeUserResourcePercent Int64,
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (ownerAddress, contractAddress, blockNum, transactionHash, contractIndex)
@@ -1505,8 +1496,8 @@ pub struct UpdateSettingContractRow {
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub owner_address: String,
-    pub contract_address: String,
+    pub owner_address: Bytes,
+    pub contract_address: Bytes,
     pub consume_user_resource_percent: i64,
 }
 
@@ -1524,8 +1515,8 @@ impl UpdateSettingContractRow {
             transaction_index,
             contract_index,
 
-            owner_address: t_addr_from_21(call.owner_address.clone()),
-            contract_address: t_addr_from_21(call.contract_address.clone()),
+            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
+            contract_address: len_20_addr_from_any_vec(call.contract_address.clone()),
             consume_user_resource_percent: call.consume_user_resource_percent,
         }
     }
@@ -1537,7 +1528,7 @@ impl UpdateSettingContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(34),
+  ownerAddress FixedString(20),
   firstTokenId String,
   firstTokenBalance Int64,
   secondTokenId String,
@@ -1554,7 +1545,7 @@ pub struct ExchangeCreateContractRow {
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub owner_address: String,
+    pub owner_address: Bytes,
     pub first_token_id: Bytes,
     pub first_token_balance: i64,
     pub second_token_id: Bytes,
@@ -1575,7 +1566,7 @@ impl ExchangeCreateContractRow {
             transaction_index,
             contract_index,
 
-            owner_address: t_addr_from_21(call.owner_address.clone()),
+            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
             first_token_id: klickhouse::Bytes(call.first_token_id.clone()),
             first_token_balance: call.first_token_balance,
             second_token_id: klickhouse::Bytes(call.second_token_id.clone()),
@@ -1590,7 +1581,7 @@ impl ExchangeCreateContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(34),
+  ownerAddress FixedString(20),
   exchangeId Int64,
   tokenId String,
   quant Int64,
@@ -1606,7 +1597,7 @@ pub struct ExchangeInjectContractRow {
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub owner_address: String,
+    pub owner_address: Bytes,
     pub exchange_id: i64,
     pub token_id: Bytes,
     pub quant: i64,
@@ -1626,7 +1617,7 @@ impl ExchangeInjectContractRow {
             transaction_index,
             contract_index,
 
-            owner_address: t_addr_from_21(call.owner_address.clone()),
+            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
             exchange_id: call.exchange_id,
             token_id: klickhouse::Bytes(call.token_id.clone()),
             quant: call.quant,
@@ -1640,7 +1631,7 @@ impl ExchangeInjectContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(34),
+  ownerAddress FixedString(20),
   exchangeId Int64,
   tokenId String,
   quant Int64,
@@ -1656,7 +1647,7 @@ pub struct ExchangeWithdrawContractRow {
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub owner_address: String,
+    pub owner_address: Bytes,
     pub exchange_id: i64,
     pub token_id: Bytes,
     pub quant: i64,
@@ -1676,7 +1667,7 @@ impl ExchangeWithdrawContractRow {
             transaction_index,
             contract_index,
 
-            owner_address: t_addr_from_21(call.owner_address.clone()),
+            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
             exchange_id: call.exchange_id,
             token_id: klickhouse::Bytes(call.token_id.clone()),
             quant: call.quant,
@@ -1690,7 +1681,7 @@ impl ExchangeWithdrawContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(34),
+  ownerAddress FixedString(20),
   exchangeId Int64,
   tokenId String,
   quant Int64,
@@ -1707,7 +1698,7 @@ pub struct ExchangeTransactionContractRow {
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub owner_address: String,
+    pub owner_address: Bytes,
     pub exchange_id: i64,
     pub token_id: Bytes,
     pub quant: i64,
@@ -1728,7 +1719,7 @@ impl ExchangeTransactionContractRow {
             transaction_index,
             contract_index,
 
-            owner_address: t_addr_from_21(call.owner_address.clone()),
+            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
             exchange_id: call.exchange_id,
             token_id: klickhouse::Bytes(call.token_id.clone()),
             quant: call.quant,
@@ -1743,8 +1734,8 @@ impl ExchangeTransactionContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(34),
-  contractAddress FixedString(34),
+  ownerAddress FixedString(20),
+  contractAddress FixedString(20),
   originEnergyLimit Int64,
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (ownerAddress, contractAddress, blockNum, transactionHash, contractIndex)
@@ -1758,8 +1749,8 @@ pub struct UpdateEnergyLimitContractRow {
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub owner_address: String,
-    pub contract_address: String,
+    pub owner_address: Bytes,
+    pub contract_address: Bytes,
     pub origin_energy_limit: i64,
 }
 
@@ -1777,8 +1768,8 @@ impl UpdateEnergyLimitContractRow {
             transaction_index,
             contract_index,
 
-            owner_address: t_addr_from_21(call.owner_address.clone()),
-            contract_address: t_addr_from_21(call.contract_address.clone()),
+            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
+            contract_address: len_20_addr_from_any_vec(call.contract_address.clone()),
             origin_energy_limit: call.origin_energy_limit,
         }
     }
@@ -1790,7 +1781,7 @@ impl UpdateEnergyLimitContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(34),
+  ownerAddress FixedString(20),
 
   ownerPermissionType Nullable(Int32),
   ownerPermissionId Nullable(Int32),
@@ -1829,14 +1820,14 @@ pub struct AccountPermissionUpdateContractRow {
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub owner_address: String,
+    pub owner_address: Bytes,
 
     pub owner_permission_type: Option<i32>,
     pub owner_permission_id: Option<i32>,
     pub owner_permission_name: Option<String>,
     pub owner_threshold: Option<i64>,
     pub owner_parent_id: Option<i32>,
-    pub owner_keys: HashMap<String, i64>,
+    pub owner_keys: HashMap<Bytes, i64>,
     pub owner_operations: Bytes,
 
     pub witness_permission_type: Option<i32>,
@@ -1844,7 +1835,7 @@ pub struct AccountPermissionUpdateContractRow {
     pub witness_permission_name: Option<String>,
     pub witness_threshold: Option<i64>,
     pub witness_parent_id: Option<i32>,
-    pub witness_keys: HashMap<String, i64>,
+    pub witness_keys: HashMap<Bytes, i64>,
     pub witness_operations: Bytes,
 
     #[klickhouse(rename = "actives.permissionType")]
@@ -1858,7 +1849,7 @@ pub struct AccountPermissionUpdateContractRow {
     #[klickhouse(rename = "actives.parentId")]
     pub actives_parent_id: Vec<i32>,
     #[klickhouse(rename = "actives.keys")]
-    pub actives_keys: Vec<HashMap<String, i64>>,
+    pub actives_keys: Vec<HashMap<Bytes, i64>>,
     #[klickhouse(rename = "actives.operations")]
     pub actives_operations: Vec<Bytes>,
 }
@@ -1881,10 +1872,15 @@ impl AccountPermissionUpdateContractRow {
             owner_operations,
         ) = match &call.owner {
             Some(owner) => {
-                let keys = owner.keys.clone().into_iter().fold(HashMap::default(), |mut keys, key| {
-                    keys.insert(t_addr_from_21(key.address), key.weight);
-                    keys
-                });
+                let keys =
+                    owner
+                        .keys
+                        .clone()
+                        .into_iter()
+                        .fold(HashMap::default(), |mut keys, key| {
+                            keys.insert(len_20_addr_from_any_vec(key.address), key.weight);
+                            keys
+                        });
                 (
                     Some(owner.r#type),
                     Some(owner.id),
@@ -1914,32 +1910,36 @@ impl AccountPermissionUpdateContractRow {
             witness_parent_id,
             witness_keys,
             witness_operations,
-        ) = match &call.witness {
-            Some(witness) => {
-                let keys = witness.keys.clone().into_iter().fold(HashMap::default(), |mut keys, key| {
-                    keys.insert(t_addr_from_21(key.address), key.weight);
-                    keys
-                });
-                (
-                    Some(witness.r#type),
-                    Some(witness.id),
-                    Some(witness.permission_name.clone()),
-                    Some(witness.threshold),
-                    Some(witness.parent_id),
-                    keys,
-                    Bytes(witness.operations.clone()),
-                )
-            }
-            None => (
-                None,
-                None,
-                None,
-                None,
-                None,
-                HashMap::default(),
-                Bytes::default(),
-            ),
-        };
+        ) =
+            match &call.witness {
+                Some(witness) => {
+                    let keys = witness.keys.clone().into_iter().fold(
+                        HashMap::default(),
+                        |mut keys, key| {
+                            keys.insert(len_20_addr_from_any_vec(key.address), key.weight);
+                            keys
+                        },
+                    );
+                    (
+                        Some(witness.r#type),
+                        Some(witness.id),
+                        Some(witness.permission_name.clone()),
+                        Some(witness.threshold),
+                        Some(witness.parent_id),
+                        keys,
+                        Bytes(witness.operations.clone()),
+                    )
+                }
+                None => (
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    HashMap::default(),
+                    Bytes::default(),
+                ),
+            };
 
         let (
             actives_permission_type,
@@ -1949,55 +1949,59 @@ impl AccountPermissionUpdateContractRow {
             actives_parent_id,
             actives_keys,
             actives_operations,
-        ) = call.actives.iter().fold(
-            (
-                Vec::new(),
-                Vec::new(),
-                Vec::new(),
-                Vec::new(),
-                Vec::new(),
-                Vec::new(),
-                Vec::new(),
-            ),
-            |(
-                mut actives_permission_type,
-                mut actives_permission_id,
-                mut actives_permission_name,
-                mut actives_threshold,
-                mut actives_parent_id,
-                mut actives_keys,
-                mut actives_operations,
-            ),
-             active| {
-                let keys = active.keys.clone().into_iter().fold(HashMap::default(), |mut keys, key| {
-                    keys.insert(t_addr_from_21(key.address), key.weight);
-                    keys
-                });
-                actives_permission_type.push(active.r#type);
-                actives_permission_id.push(active.id);
-                actives_permission_name.push(active.permission_name.clone());
-                actives_threshold.push(active.threshold);
-                actives_parent_id.push(active.parent_id);
-                actives_keys.push(keys);
-                actives_operations.push(Bytes(active.operations.clone()));
+        ) =
+            call.actives.iter().fold(
                 (
-                    actives_permission_type,
-                    actives_permission_id,
-                    actives_permission_name,
-                    actives_threshold,
-                    actives_parent_id,
-                    actives_keys,
-                    actives_operations,
-                )
-            },
-        );
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                ),
+                |(
+                    mut actives_permission_type,
+                    mut actives_permission_id,
+                    mut actives_permission_name,
+                    mut actives_threshold,
+                    mut actives_parent_id,
+                    mut actives_keys,
+                    mut actives_operations,
+                ),
+                 active| {
+                    let keys = active.keys.clone().into_iter().fold(
+                        HashMap::default(),
+                        |mut keys, key| {
+                            keys.insert(len_20_addr_from_any_vec(key.address), key.weight);
+                            keys
+                        },
+                    );
+                    actives_permission_type.push(active.r#type);
+                    actives_permission_id.push(active.id);
+                    actives_permission_name.push(active.permission_name.clone());
+                    actives_threshold.push(active.threshold);
+                    actives_parent_id.push(active.parent_id);
+                    actives_keys.push(keys);
+                    actives_operations.push(Bytes(active.operations.clone()));
+                    (
+                        actives_permission_type,
+                        actives_permission_id,
+                        actives_permission_name,
+                        actives_threshold,
+                        actives_parent_id,
+                        actives_keys,
+                        actives_operations,
+                    )
+                },
+            );
 
         Self {
             block_num,
             transaction_hash: klickhouse::Bytes(transaction_hash),
             transaction_index,
             contract_index,
-            owner_address: t_addr_from_21(call.owner_address.clone()),
+            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
 
             owner_permission_id,
             owner_permission_type,
@@ -2032,8 +2036,8 @@ impl AccountPermissionUpdateContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(34),
-  contractAddress FixedString(34),
+  ownerAddress FixedString(20),
+  contractAddress FixedString(20),
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (ownerAddress, contractAddress, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
@@ -2046,8 +2050,8 @@ pub struct ClearAbiContractRow {
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub owner_address: String,
-    pub contract_address: String,
+    pub owner_address: Bytes,
+    pub contract_address: Bytes,
 }
 
 impl ClearAbiContractRow {
@@ -2063,8 +2067,8 @@ impl ClearAbiContractRow {
             transaction_hash: klickhouse::Bytes(transaction_hash),
             transaction_index,
             contract_index,
-            owner_address: t_addr_from_21(call.owner_address.clone()),
-            contract_address: t_addr_from_21(call.contract_address.clone()),
+            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
+            contract_address: len_20_addr_from_any_vec(call.contract_address.clone()),
         }
     }
 }
@@ -2075,7 +2079,7 @@ impl ClearAbiContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(34),
+  ownerAddress FixedString(20),
   brokerage Int32,
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (ownerAddress, blockNum, transactionHash, contractIndex)
@@ -2089,7 +2093,7 @@ pub struct UpdateBrokerageContractRow {
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub owner_address: String,
+    pub owner_address: Bytes,
     pub brokerage: i32,
 }
 
@@ -2106,7 +2110,7 @@ impl UpdateBrokerageContractRow {
             transaction_hash: klickhouse::Bytes(transaction_hash),
             transaction_index,
             contract_index,
-            owner_address: t_addr_from_21(call.owner_address.clone()),
+            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
             brokerage: call.brokerage,
         }
     }
@@ -2118,7 +2122,7 @@ impl UpdateBrokerageContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  transparentFromAddress FixedString(34),
+  transparentFromAddress FixedString(20),
   fromAmount Int64,
 
   spendValueCommitment String,
@@ -2136,7 +2140,7 @@ impl UpdateBrokerageContractRow {
   receiveZkproof String,
 
   bindingSignature FixedString(64),
-  transparentToAddress FixedString(34),
+  transparentToAddress FixedString(20),
   toAmount Int64,
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (transparentFromAddress, transparentToAddress, blockNum, transactionHash, contractIndex)
@@ -2150,7 +2154,7 @@ pub struct ShieldedTransferContractRow {
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub transparent_from_address: String,
+    pub transparent_from_address: Bytes,
     pub from_amount: i64,
     #[klickhouse(rename = "spendDescription.valueCommitment")]
     pub spend_description_value_commitment: Vec<Bytes>,
@@ -2179,7 +2183,7 @@ pub struct ShieldedTransferContractRow {
     pub receive_description_zkproof: Vec<Bytes>,
 
     pub binding_signature: Bytes,
-    pub transparent_to_address: String,
+    pub transparent_to_address: Bytes,
     pub to_amount: i64,
 }
 
@@ -2285,7 +2289,9 @@ impl ShieldedTransferContractRow {
             transaction_hash: klickhouse::Bytes(transaction_hash),
             transaction_index,
             contract_index,
-            transparent_from_address: t_addr_from_21(call.transparent_from_address.clone()),
+            transparent_from_address: len_20_addr_from_any_vec(
+                call.transparent_from_address.clone(),
+            ),
             from_amount: call.from_amount,
             spend_description_value_commitment,
             spend_description_anchor,
@@ -2300,7 +2306,7 @@ impl ShieldedTransferContractRow {
             receive_description_c_out,
             receive_description_zkproof,
             binding_signature: klickhouse::Bytes(call.binding_signature.clone()),
-            transparent_to_address: t_addr_from_21(call.transparent_to_address.clone()),
+            transparent_to_address: len_20_addr_from_any_vec(call.transparent_to_address.clone()),
             to_amount: call.to_amount,
         }
     }
@@ -2312,7 +2318,7 @@ impl ShieldedTransferContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(34),
+  ownerAddress FixedString(20),
   sellTokenId String,
   sellTokenQuantity Int64,
   buyTokenId String,
@@ -2329,7 +2335,7 @@ pub struct MarketSellAssetContractRow {
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub owner_address: String,
+    pub owner_address: Bytes,
     pub sell_token_id: Bytes,
     pub sell_token_quantity: i64,
     pub buy_token_id: Bytes,
@@ -2349,7 +2355,7 @@ impl MarketSellAssetContractRow {
             transaction_hash: klickhouse::Bytes(transaction_hash),
             transaction_index,
             contract_index,
-            owner_address: t_addr_from_21(call.owner_address.clone()),
+            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
             sell_token_id: klickhouse::Bytes(call.sell_token_id.clone()),
             sell_token_quantity: call.sell_token_quantity,
             buy_token_id: klickhouse::Bytes(call.buy_token_id.clone()),
@@ -2364,7 +2370,7 @@ impl MarketSellAssetContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(34),
+  ownerAddress FixedString(20),
   orderId String,
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (ownerAddress, orderId, blockNum, transactionHash, contractIndex)
@@ -2378,7 +2384,7 @@ pub struct MarketCancelOrderContractRow {
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub owner_address: String,
+    pub owner_address: Bytes,
     pub order_id: Bytes,
 }
 
@@ -2396,7 +2402,7 @@ impl MarketCancelOrderContractRow {
             transaction_index,
             contract_index,
 
-            owner_address: t_addr_from_21(call.owner_address.clone()),
+            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
             order_id: klickhouse::Bytes(call.order_id.clone()),
         }
     }
@@ -2408,7 +2414,7 @@ impl MarketCancelOrderContractRow {
   transactionIndex Int64,
   contractIndex Int64,
 
-  ownerAddress FixedString(34),
+  ownerAddress FixedString(20),
   frozenBalance Int64,
   resource Int32,
 ) ENGINE = ReplacingMergeTree()
@@ -2423,7 +2429,7 @@ pub struct FreezeBalanceV2ContractRow {
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub owner_address: String,
+    pub owner_address: Bytes,
     pub frozen_balance: i64,
     pub resource: i32,
 }
@@ -2442,7 +2448,7 @@ impl FreezeBalanceV2ContractRow {
             transaction_index,
             contract_index,
 
-            owner_address: t_addr_from_21(call.owner_address.clone()),
+            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
             frozen_balance: call.frozen_balance,
             resource: call.resource,
         }
@@ -2456,7 +2462,7 @@ impl FreezeBalanceV2ContractRow {
     `transactionIndex` Int64,
     `contractIndex` Int64,
 
-    `ownerAddress` FixedString(34),
+    `ownerAddress` FixedString(20),
     `unfreezeBalance` Int64,
     `resource` Int32,
 ) ENGINE = ReplacingMergeTree
@@ -2471,7 +2477,7 @@ pub struct UnfreezeBalanceV2ContractRow {
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub owner_address: String,
+    pub owner_address: Bytes,
     pub unfreeze_balance: i64,
     pub resource: i32,
 }
@@ -2490,7 +2496,7 @@ impl UnfreezeBalanceV2ContractRow {
             transaction_index,
             contract_index,
 
-            owner_address: t_addr_from_21(call.owner_address.clone()),
+            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
             unfreeze_balance: call.unfreeze_balance,
             resource: call.resource,
         }
@@ -2504,7 +2510,7 @@ impl UnfreezeBalanceV2ContractRow {
     `transactionIndex` Int64,
     `contractIndex` Int64,
 
-    `ownerAddress` FixedString(34),
+    `ownerAddress` FixedString(20),
 ) ENGINE = ReplacingMergeTree
 ORDER BY (ownerAddress, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
@@ -2517,7 +2523,7 @@ pub struct WithdrawExpireUnfreezeContractRow {
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub owner_address: String,
+    pub owner_address: Bytes,
 }
 
 impl WithdrawExpireUnfreezeContractRow {
@@ -2533,7 +2539,7 @@ impl WithdrawExpireUnfreezeContractRow {
             transaction_hash: klickhouse::Bytes(transaction_hash),
             transaction_index,
             contract_index,
-            owner_address: t_addr_from_21(call.owner_address.clone()),
+            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
         }
     }
 }
@@ -2545,10 +2551,10 @@ impl WithdrawExpireUnfreezeContractRow {
     `transactionIndex` Int64,
     `contractIndex` Int64,
 
-    `ownerAddress` FixedString(34),
+    `ownerAddress` FixedString(20),
     `resource` Int32,
     `balance` Int64,
-    `receiverAddress` FixedString(34),
+    `receiverAddress` FixedString(20),
     `lock` Boolean,
     `lockPeriod` Int64,
 ) ENGINE = ReplacingMergeTree
@@ -2563,10 +2569,10 @@ pub struct DelegateResourceContractRow {
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub owner_address: String,
+    pub owner_address: Bytes,
     pub resource: i32,
     pub balance: i64,
-    pub receiver_address: String,
+    pub receiver_address: Bytes,
     pub lock: bool,
     pub lock_period: i64,
 }
@@ -2584,10 +2590,10 @@ impl DelegateResourceContractRow {
             transaction_hash: klickhouse::Bytes(transaction_hash),
             transaction_index,
             contract_index,
-            owner_address: t_addr_from_21(call.owner_address.clone()),
+            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
             resource: call.resource,
             balance: call.balance,
-            receiver_address: t_addr_from_21(call.receiver_address.clone()),
+            receiver_address: len_20_addr_from_any_vec(call.receiver_address.clone()),
             lock: call.lock,
             lock_period: call.lock_period,
         }
@@ -2601,10 +2607,10 @@ impl DelegateResourceContractRow {
     `transactionIndex` Int64,
     `contractIndex` Int64,
 
-    `ownerAddress` FixedString(34),
+    `ownerAddress` FixedString(20),
     `resource` Int32,
     `balance` Int64,
-    `receiverAddress` FixedString(34),
+    `receiverAddress` FixedString(20),
 ) ENGINE = ReplacingMergeTree
 ORDER BY (ownerAddress, resource, receiverAddress, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
@@ -2617,10 +2623,10 @@ pub struct UndelegateResourceContractRow {
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub owner_address: String,
+    pub owner_address: Bytes,
     pub resource: i32,
     pub balance: i64,
-    pub receiver_address: String,
+    pub receiver_address: Bytes,
 }
 
 impl UndelegateResourceContractRow {
@@ -2636,10 +2642,10 @@ impl UndelegateResourceContractRow {
             transaction_hash: klickhouse::Bytes(transaction_hash),
             transaction_index,
             contract_index,
-            owner_address: t_addr_from_21(call.owner_address.clone()),
+            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
             resource: call.resource,
             balance: call.balance,
-            receiver_address: t_addr_from_21(call.receiver_address.clone()),
+            receiver_address: len_20_addr_from_any_vec(call.receiver_address.clone()),
         }
     }
 }
@@ -2651,7 +2657,7 @@ impl UndelegateResourceContractRow {
     `transactionIndex` Int64,
     `contractIndex` Int64,
 
-    `ownerAddress` FixedString(34),
+    `ownerAddress` FixedString(20),
 ) ENGINE = ReplacingMergeTree
 ORDER BY (ownerAddress, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
@@ -2664,7 +2670,7 @@ pub struct CancelAllUnfreezeV2ContractRow {
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub owner_address: String,
+    pub owner_address: Bytes,
 }
 
 impl CancelAllUnfreezeV2ContractRow {
@@ -2680,7 +2686,7 @@ impl CancelAllUnfreezeV2ContractRow {
             transaction_hash: klickhouse::Bytes(transaction_hash),
             transaction_index,
             contract_index,
-            owner_address: t_addr_from_21(call.owner_address.clone()),
+            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
         }
     }
 }
