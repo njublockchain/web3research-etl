@@ -30,4 +30,4 @@
 
 ## Examples
 
-
+see commands in [`Makefile`](./Makefile)
