@@ -120,7 +120,6 @@ impl BlockRow {
 
 /** CREATE TABLE IF NOT EXISTS transactions
 (
-
     `hash` FixedString(32),
     `blockNum` Int64,
     `index` Int64,
@@ -470,8 +469,7 @@ impl LogRow {
     `extra` String
 )
 ENGINE = ReplacingMergeTree
-ORDER BY (transactionHash,
- internalIndex)
+ORDER BY (callerAddress, transferToAddress, blockNum, transactionHash, internalIndex)
 SETTINGS index_granularity = 8192; */
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
@@ -1313,10 +1311,7 @@ impl UpdateAssetContractRow {
   contractIndex Int64,
 
   ownerAddress String,
-  parameters Nested(
-    key Int64,
-    value Int64
-  )
+  parameters Map(Int64, Int64) COMMENT 'key -> value',
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (ownerAddress, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
@@ -1330,10 +1325,7 @@ pub struct ProposalCreateContractRow {
     pub contract_index: i64,
 
     pub owner_address: Bytes,
-    #[klickhouse(rename = "parameters.key")]
-    pub parameters_key: Vec<i64>,
-    #[klickhouse(rename = "parameters.value")]
-    pub parameters_value: Vec<i64>,
+    pub parameters: HashMap<i64, i64>
 }
 
 impl ProposalCreateContractRow {
@@ -1351,8 +1343,7 @@ impl ProposalCreateContractRow {
             contract_index,
 
             owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
-            parameters_key: call.parameters.keys().cloned().collect(),
-            parameters_value: call.parameters.values().cloned().collect(),
+            parameters: call.parameters.clone(),
         }
     }
 }
