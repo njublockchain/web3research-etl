@@ -382,7 +382,10 @@ pub(crate) async fn init(
                 .clone()
                 .unwrap();
 
+            let mut parameter_parsed = false;
+
             if let Ok(msg) = parameter.to_msg::<AccountCreateContract>() {
+                parameter_parsed = true;
                 let row = AccountCreateContractRow::from_grpc(
                     num,
                     transaction.txid.clone(),
@@ -393,6 +396,7 @@ pub(crate) async fn init(
                 account_create_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<TransferContract>() {
+                parameter_parsed = true;
                 let row = TransferContractRow::from_grpc(
                     num,
                     transaction.txid.clone(),
@@ -403,6 +407,7 @@ pub(crate) async fn init(
                 transfer_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<TransferAssetContract>() {
+                parameter_parsed = true;
                 let row = TransferAssetContractRow::from_grpc(
                     num,
                     transaction.txid.clone(),
@@ -413,6 +418,7 @@ pub(crate) async fn init(
                 transfer_asset_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<VoteAssetContract>() {
+                parameter_parsed = true;
                 let row = VoteAssetContractRow::from_grpc(
                     num,
                     transaction.txid.clone(),
@@ -423,6 +429,7 @@ pub(crate) async fn init(
                 vote_asset_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<VoteWitnessContract>() {
+                parameter_parsed = true;
                 let row = VoteWitnessContractRow::from_grpc(
                     num,
                     transaction.txid.clone(),
@@ -433,6 +440,7 @@ pub(crate) async fn init(
                 vote_witness_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<WitnessCreateContract>() {
+                parameter_parsed = true;
                 let row = WitnessCreateContractRow::from_grpc(
                     num,
                     transaction.txid.clone(),
@@ -443,6 +451,7 @@ pub(crate) async fn init(
                 witness_create_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<AssetIssueContract>() {
+                parameter_parsed = true;
                 let row = AssetIssueContractRow::from_grpc(
                     num,
                     transaction.txid.clone(),
@@ -453,6 +462,7 @@ pub(crate) async fn init(
                 asset_issue_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<WitnessUpdateContract>() {
+                parameter_parsed = true;
                 let row = WitnessUpdateContractRow::from_grpc(
                     num,
                     transaction.txid.clone(),
@@ -463,6 +473,7 @@ pub(crate) async fn init(
                 witness_update_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<ParticipateAssetIssueContract>() {
+                parameter_parsed = true;
                 let row = ParticipateAssetIssueContractRow::from_grpc(
                     num,
                     transaction.txid.clone(),
@@ -473,6 +484,7 @@ pub(crate) async fn init(
                 participate_asset_issue_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<AccountUpdateContract>() {
+                parameter_parsed = true;
                 let row = AccountUpdateContractRow::from_grpc(
                     num,
                     transaction.txid.clone(),
@@ -483,6 +495,7 @@ pub(crate) async fn init(
                 account_update_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<FreezeBalanceContract>() {
+                parameter_parsed = true;
                 let row = FreezeBalanceContractRow::from_grpc(
                     num,
                     transaction.txid.clone(),
@@ -493,6 +506,7 @@ pub(crate) async fn init(
                 freeze_balance_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<UnfreezeBalanceContract>() {
+                parameter_parsed = true;
                 let row = UnfreezeBalanceContractRow::from_grpc(
                     num,
                     transaction.txid.clone(),
@@ -503,6 +517,7 @@ pub(crate) async fn init(
                 unfreeze_balance_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<WithdrawBalanceContract>() {
+                parameter_parsed = true;
                 let row = WithdrawBalanceContractRow::from_grpc(
                     num,
                     transaction.txid.clone(),
@@ -513,6 +528,7 @@ pub(crate) async fn init(
                 withdraw_balance_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<UnfreezeAssetContract>() {
+                parameter_parsed = true;
                 let row = UnfreezeAssetContractRow::from_grpc(
                     num,
                     transaction.txid.clone(),
@@ -523,6 +539,7 @@ pub(crate) async fn init(
                 unfreeze_asset_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<UpdateAssetContract>() {
+                parameter_parsed = true;
                 let row = UpdateAssetContractRow::from_grpc(
                     num,
                     transaction.txid.clone(),
@@ -533,6 +550,7 @@ pub(crate) async fn init(
                 update_asset_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<ProposalCreateContract>() {
+                parameter_parsed = true;
                 let row = ProposalCreateContractRow::from_grpc(
                     num,
                     transaction.txid.clone(),
@@ -543,6 +561,7 @@ pub(crate) async fn init(
                 proposal_create_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<ProposalApproveContract>() {
+                parameter_parsed = true;
                 let row = ProposalApproveContractRow::from_grpc(
                     num,
                     transaction.txid.clone(),
@@ -553,6 +572,7 @@ pub(crate) async fn init(
                 proposal_approve_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<ProposalDeleteContract>() {
+                parameter_parsed = true;
                 let row = ProposalDeleteContractRow::from_grpc(
                     num,
                     transaction.txid.clone(),
@@ -563,6 +583,7 @@ pub(crate) async fn init(
                 proposal_delete_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<SetAccountIdContract>() {
+                parameter_parsed = true;
                 let row = SetAccountIdContractRow::from_grpc(
                     num,
                     transaction.txid.clone(),
@@ -573,6 +594,7 @@ pub(crate) async fn init(
                 set_account_id_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<CreateSmartContract>() {
+                parameter_parsed = true;
                 let row = CreateSmartContractRow::from_grpc(
                     num,
                     transaction.txid.clone(),
@@ -583,6 +605,7 @@ pub(crate) async fn init(
                 create_smart_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<TriggerSmartContract>() {
+                parameter_parsed = true;
                 let row = TriggerSmartContractRow::from_grpc(
                     num,
                     transaction.txid.clone(),
@@ -593,6 +616,7 @@ pub(crate) async fn init(
                 trigger_smart_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<UpdateSettingContract>() {
+                parameter_parsed = true;
                 let row = UpdateSettingContractRow::from_grpc(
                     num,
                     transaction.txid.clone(),
@@ -603,6 +627,7 @@ pub(crate) async fn init(
                 update_setting_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<ExchangeCreateContract>() {
+                parameter_parsed = true;
                 let row = ExchangeCreateContractRow::from_grpc(
                     num,
                     transaction.txid.clone(),
@@ -613,6 +638,7 @@ pub(crate) async fn init(
                 exchange_create_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<ExchangeInjectContract>() {
+                parameter_parsed = true;
                 let row = ExchangeInjectContractRow::from_grpc(
                     num,
                     transaction.txid.clone(),
@@ -623,6 +649,7 @@ pub(crate) async fn init(
                 exchange_inject_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<ExchangeWithdrawContract>() {
+                parameter_parsed = true;
                 let row = ExchangeWithdrawContractRow::from_grpc(
                     num,
                     transaction.txid.clone(),
@@ -633,6 +660,7 @@ pub(crate) async fn init(
                 exchange_withdraw_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<ExchangeTransactionContract>() {
+                parameter_parsed = true;
                 let row = ExchangeTransactionContractRow::from_grpc(
                     num,
                     transaction.txid.clone(),
@@ -643,6 +671,7 @@ pub(crate) async fn init(
                 exchange_transaction_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<UpdateEnergyLimitContract>() {
+                parameter_parsed = true;
                 let row = UpdateEnergyLimitContractRow::from_grpc(
                     num,
                     transaction.txid.clone(),
@@ -653,6 +682,7 @@ pub(crate) async fn init(
                 update_energy_limit_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<AccountPermissionUpdateContract>() {
+                parameter_parsed = true;
                 let row = AccountPermissionUpdateContractRow::from_grpc(
                     num,
                     transaction.txid.clone(),
@@ -663,6 +693,7 @@ pub(crate) async fn init(
                 account_permission_update_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<ClearAbiContract>() {
+                parameter_parsed = true;
                 let row = ClearAbiContractRow::from_grpc(
                     num,
                     transaction.txid.clone(),
@@ -673,6 +704,7 @@ pub(crate) async fn init(
                 clear_abi_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<UpdateBrokerageContract>() {
+                parameter_parsed = true;
                 let row = UpdateBrokerageContractRow::from_grpc(
                     num,
                     transaction.txid.clone(),
@@ -683,6 +715,7 @@ pub(crate) async fn init(
                 update_brokerage_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<ShieldedTransferContract>() {
+                parameter_parsed = true;
                 let row = ShieldedTransferContractRow::from_grpc(
                     num,
                     transaction.txid.clone(),
@@ -693,6 +726,7 @@ pub(crate) async fn init(
                 shielded_transfer_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<MarketSellAssetContract>() {
+                parameter_parsed = true;
                 let row = MarketSellAssetContractRow::from_grpc(
                     num,
                     transaction.txid.clone(),
@@ -703,6 +737,7 @@ pub(crate) async fn init(
                 market_sell_asset_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<MarketCancelOrderContract>() {
+                parameter_parsed = true;
                 let row = MarketCancelOrderContractRow::from_grpc(
                     num,
                     transaction.txid.clone(),
@@ -713,6 +748,7 @@ pub(crate) async fn init(
                 market_cancel_order_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<FreezeBalanceV2Contract>() {
+                parameter_parsed = true;
                 let row = FreezeBalanceV2ContractRow::from_grpc(
                     num,
                     transaction.txid.clone(),
@@ -723,6 +759,7 @@ pub(crate) async fn init(
                 freeze_balance_v2_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<UnfreezeBalanceV2Contract>() {
+                parameter_parsed = true;
                 let row = UnfreezeBalanceV2ContractRow::from_grpc(
                     num,
                     transaction.txid.clone(),
@@ -733,6 +770,7 @@ pub(crate) async fn init(
                 unfreeze_balance_v2_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<WithdrawExpireUnfreezeContract>() {
+                parameter_parsed = true;
                 let row = WithdrawExpireUnfreezeContractRow::from_grpc(
                     num,
                     transaction.txid.clone(),
@@ -743,6 +781,7 @@ pub(crate) async fn init(
                 withdraw_expire_unfreeze_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<DelegateResourceContract>() {
+                parameter_parsed = true;
                 let row = DelegateResourceContractRow::from_grpc(
                     num,
                     transaction.txid.clone(),
@@ -753,6 +792,7 @@ pub(crate) async fn init(
                 delegate_resource_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<UnDelegateResourceContract>() {
+                parameter_parsed = true;
                 let row = UndelegateResourceContractRow::from_grpc(
                     num,
                     transaction.txid.clone(),
@@ -763,6 +803,7 @@ pub(crate) async fn init(
                 undelegate_resource_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<CancelAllUnfreezeV2Contract>() {
+                parameter_parsed = true;
                 let row = CancelAllUnfreezeV2ContractRow::from_grpc(
                     num,
                     transaction.txid.clone(),
@@ -774,6 +815,9 @@ pub(crate) async fn init(
             }
 
             //TODO: add CustomContract and GetContract (useless)
+            if !parameter_parsed {
+                panic!("unknown contract type: {:?}", parameter.type_url);
+            }
 
             transaction_row_list.push(transaction_row);
         }
