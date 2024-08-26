@@ -133,7 +133,6 @@ impl BlockRow {
     `authorityPermissionNames` Array(LowCardinality(String)),
     `data` String,
     `contractType` LowCardinality(String),
-    `contractParameter` Nullable(String),
     `contractProvider` Nullable(String),
     `contractName` Nullable(String),
     `contractPermissionId` Nullable(Int32),
@@ -191,7 +190,6 @@ pub struct TransactionRow {
     pub data: Bytes,
 
     pub contract_type: String,
-    pub contract_parameter: Option<Bytes>,
     pub contract_provider: Option<Bytes>,
     pub contract_name: Option<Bytes>,
     pub contract_permission_id: Option<i32>,
@@ -313,8 +311,6 @@ impl TransactionRow {
             contract_type: contract.map_or("".to_owned(), |contract| {
                 contract.r#type().as_str_name().to_owned()
             }),
-            contract_parameter: contract
-                .map(|contract| Bytes(contract.parameter.clone().unwrap().value)),
             contract_provider: contract.map(|contract| Bytes(contract.provider.clone())),
             contract_name: contract.map(|contract| Bytes(contract.contract_name.clone())),
             contract_permission_id: contract.map(|contract| contract.permission_id),
