@@ -46,7 +46,7 @@ pub fn len_20_addr_from_any_vec(any_addr: Vec<u8>) -> Bytes {
         return Bytes(any_addr);
     }
 
-    // remove the T prefix 
+    // remove the T prefix
     if any_addr.starts_with(&[0x41]) {
         let cut_addr = any_addr[1..].to_vec();
         assert!(cut_addr.len() == 20);
@@ -110,7 +110,11 @@ impl BlockRow {
             parent_hash: Bytes(header_raw_data.parent_hash),
             number: header_raw_data.number,
             witness_id: header_raw_data.witness_id,
-            witness_address: Bytes(header_raw_data.witness_address),
+            witness_address: if header_raw_data.witness_address.starts_with(&[0x41]) {
+                Bytes(len_20_addr_from_any_vec(header_raw_data.witness_address).to_vec())
+            } else {
+                Bytes(header_raw_data.witness_address) // for the genesis phase
+            },
             version: header_raw_data.version,
             account_state_root: klickhouse::Bytes(header_raw_data.account_state_root),
             witness_signature: klickhouse::Bytes(header.witness_signature),
@@ -461,7 +465,7 @@ impl LogRow {
     `callerAddress` String,
     `transferToAddress` String,
     `callValueInfos` Nested(
-        tokenId String, 
+        tokenId String,
         callValue Int64
     ),
     `note` String,
@@ -1325,7 +1329,7 @@ pub struct ProposalCreateContractRow {
     pub contract_index: i64,
 
     pub owner_address: Bytes,
-    pub parameters: HashMap<i64, i64>
+    pub parameters: HashMap<i64, i64>,
 }
 
 impl ProposalCreateContractRow {
