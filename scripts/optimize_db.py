@@ -1,3 +1,4 @@
+import time
 import clickhouse_connect
 import argparse
 
@@ -29,3 +30,20 @@ if __name__ == "__main__":
                 print("Error optimizing table {}.{}: {}".format(args.db, table[0], e))
     except Exception as e:
         print("Error getting tables from {}: {}".format(args.db, e))
+
+    while True:
+        result = client.query(
+            "SELECT table, progress FROM system.merges WHERE database = '{}';"
+            "".format(args.db)
+        )
+        if not result.result_rows:
+            break
+
+        for row in result.result_rows:
+            print(
+                "Table {}.{} is being optimzing: {}%".format(
+                    args.db, row[0], row[1] * 100
+                )
+            )
+
+        time.sleep(5)
