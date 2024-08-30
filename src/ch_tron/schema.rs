@@ -47,9 +47,8 @@ pub fn len_20_addr_from_any_vec(any_addr: Vec<u8>) -> Bytes {
     }
 
     // remove the T prefix
-    if any_addr.starts_with(&[0x41]) {
+    if any_addr.starts_with(&[0x41]) && any_addr.len() == 21 {
         let cut_addr = any_addr[1..].to_vec();
-        assert!(cut_addr.len() == 20);
         return Bytes(cut_addr);
     }
 
