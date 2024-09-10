@@ -816,7 +816,7 @@ pub(crate) async fn init(
 
             //TODO: add CustomContract and GetContract (useless)
             if !parameter_parsed {
-                panic!("unknown contract type: {:?}", parameter.type_url);
+                warn!("unknown contract type: {:?} {:X?}", parameter.type_url, transaction.txid);
             }
 
             transaction_row_list.push(transaction_row);
