@@ -32,6 +32,10 @@ if __name__ == "__main__":
         print("Error getting tables from {}: {}".format(args.db, e))
 
     while True:
+        client = clickhouse_connect.get_client(
+            dsn=args.dsn,
+            send_receive_timeout=args.timeout,
+        )
         result = client.query(
             "SELECT table, progress FROM system.merges WHERE database = '{}';"
             "".format(args.db)
@@ -46,4 +50,4 @@ if __name__ == "__main__":
                 )
             )
 
-        time.sleep(5)
+        time.sleep(60)
