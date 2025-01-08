@@ -38,10 +38,22 @@ pub async fn get_block_details(
         }
     };
 
+    let get_block_receipts = async move {
+        if num == 0 {
+            return Ok::<Vec<TransactionReceipt>, ProviderError>(Vec::new());
+        } else {
+            let result = provider
+                .get_block_receipts(ethers::types::BlockNumber::from(num))
+                .await?;
+            return Ok(result);
+        }
+    };
+
+    // geth style has no get_block_receipts rpc
     if with_get_block_receipts_rpc {
         let result = tokio::try_join!(
             provider.get_block_with_txs(num),
-            provider.get_block_receipts(num),
+            get_block_receipts,
             get_traces,
         );
 
