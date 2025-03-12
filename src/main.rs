@@ -1,8 +1,5 @@
-mod ch_arb_nova;
-mod ch_arb_one;
 mod ch_btc;
 mod ch_eth;
-mod ch_polygon;
 mod ch_tron;
 mod ch_solana;
 
@@ -25,8 +22,8 @@ pub struct Args {
 pub enum ClapActionType {
     Init {
         /// The chain to initialize
-        #[arg(short, long, value_enum, default_value_t = SupportedChain::Ethereum)]
-        chain: SupportedChain,
+        #[arg(short, long, value_enum, default_value_t = SupportedChainType::Ethereum)]
+        chain: SupportedChainType,
 
         /// The ClickHouse database DSN, [chain] will be replaced by the chain name
         #[arg(long, default_value = "clickhouse://localhost:9000/[chain]")]
@@ -54,8 +51,8 @@ pub enum ClapActionType {
     },
     Sync {
         /// The chain to synchronize
-        #[arg(short, long, value_enum, default_value_t = SupportedChain::Ethereum)]
-        chain: SupportedChain,
+        #[arg(short, long, value_enum, default_value_t = SupportedChainType::Ethereum)]
+        chain: SupportedChainType,
 
         /// The ClickHouse database DSN, [chain] will be replaced by the chain name
         #[arg(long, default_value = "clickhouse://localhost:9000/[chain]")]
@@ -75,8 +72,8 @@ pub enum ClapActionType {
     },
     Check {
         /// The chain to check the errors or missing data
-        #[arg(short, long, value_enum, default_value_t = SupportedChain::Ethereum)]
-        chain: SupportedChain,
+        #[arg(short, long, value_enum, default_value_t = SupportedChainType::Ethereum)]
+        chain: SupportedChainType,
 
         /// The ClickHouse database DSN, [chain] will be replaced by the chain name
         #[arg(long, default_value = "clickhouse://default@localhost:9000/[chain]")]
@@ -101,13 +98,10 @@ pub enum ClapActionType {
 }
 
 #[derive(clap::ValueEnum, Clone, PartialEq, Eq, Debug)]
-pub enum SupportedChain {
+pub enum SupportedChainType {
     Ethereum,
     Bitcoin,
     Tron,
-    ArbitrumOne,
-    ArbitrumNova,
-    Polygon,
     Solana,
 }
 
@@ -132,14 +126,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
             batch,
             provider_type,
         } => match chain {
-            SupportedChain::Bitcoin => {
+            SupportedChainType::Bitcoin => {
                 let chain_name = "bitcoin";
                 let provider = provider.replace("[chain]", chain_name);
                 let trace_provider = trace_provider.map(|x| x.replace("[chain]", chain_name));
 
                 ch_btc::init::init(db, provider, provider_type, from, batch).await?
             }
-            SupportedChain::Ethereum => {
+            SupportedChainType::Ethereum => {
                 let chain_name = "ethereum";
                 let provider = provider.replace("[chain]", chain_name);
                 let trace_provider = trace_provider.map(|x| x.replace("[chain]", chain_name));
@@ -147,53 +141,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 ch_eth::init::init(db, provider, trace_provider, provider_type, from, batch)
                     .await?
             }
-            SupportedChain::Tron => ch_tron::init::init(db, provider, from, batch).await?,
-            SupportedChain::ArbitrumOne => {
-                let chain_name = "arbitrum-one";
-                let provider = provider.replace("[chain]", chain_name);
-                let trace_provider = trace_provider.map(|x| x.replace("[chain]", chain_name));
-
-                ch_arb_one::init::init(
-                    db,
-                    provider,
-                    trace_provider,
-                    provider_type,
-                    from,
-                    batch,
-                )
-                .await?
-            }
-            SupportedChain::ArbitrumNova => {
-                let chain_name = "arbitrum-nova";
-                let provider = provider.replace("[chain]", chain_name);
-                let trace_provider = trace_provider.map(|x| x.replace("[chain]", chain_name));
-
-                ch_arb_nova::init::init(
-                    db,
-                    provider,
-                    trace_provider,
-                    provider_type,
-                    from,
-                    batch,
-                )
-                .await?
-            }
-            SupportedChain::Polygon => {
-                let chain_name = "polygon";
-                let provider = provider.replace("[chain]", chain_name);
-                let trace_provider = trace_provider.map(|x| x.replace("[chain]", chain_name));
-
-                ch_polygon::init::init(
-                    db,
-                    provider,
-                    trace_provider,
-                    provider_type,
-                    from,
-                    batch,
-                )
-                .await?
-            },
-            SupportedChain::Solana => {
+            SupportedChainType::Tron => ch_tron::init::init(db, provider, from, batch).await?,
+            SupportedChainType::Solana => {
                 ch_solana::init::init(db, provider, provider_type, from, batch).await?;
             }
         },
@@ -204,25 +153,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
             trace_provider,
             provider_type,
         } => match chain {
-            SupportedChain::Bitcoin => todo!(),
-            SupportedChain::Ethereum => {
+            SupportedChainType::Bitcoin => todo!(),
+            SupportedChainType::Ethereum => {
                 let chain_name = "ethereum";
                 let provider = provider.replace("[chain]", chain_name);
                 let trace_provider = trace_provider.map(|x| x.replace("[chain]", chain_name));
 
                 ch_eth::sync::sync(db, provider, trace_provider, provider_type).await?
             }
-            SupportedChain::Tron => todo!(),
-            SupportedChain::ArbitrumOne => todo!(),
-            SupportedChain::ArbitrumNova => todo!(),
-            SupportedChain::Polygon => {
-                let chain_name = "polygon";
-                let provider = provider.replace("[chain]", chain_name);
-                let trace_provider = trace_provider.map(|x| x.replace("[chain]", chain_name));
-
-                ch_polygon::sync::sync(db, provider, trace_provider, provider_type).await?
-            },
-            SupportedChain::Solana => todo!()
+            SupportedChainType::Tron => todo!(),
+            SupportedChainType::Solana => todo!()
         },
         ClapActionType::Check {
             from,
@@ -232,7 +172,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             trace_provider,
             provider_type,
         } => match chain {
-            SupportedChain::Bitcoin => {
+            SupportedChainType::Bitcoin => {
                 let chain_name = "bitcoin";
                 let provider = provider.replace("[chain]", chain_name);
                 let trace_provider = trace_provider.map(|x| x.replace("[chain]", chain_name));
@@ -240,7 +180,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 ch_btc::check::check(db, provider, trace_provider, provider_type, from)
                     .await?;
             }
-            SupportedChain::Ethereum => {
+            SupportedChainType::Ethereum => {
                 let chain_name = "ethereum";
                 let provider = provider.replace("[chain]", chain_name);
                 let trace_provider = trace_provider.map(|x| x.replace("[chain]", chain_name));
@@ -248,18 +188,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 ch_eth::check::check(db, provider, trace_provider, provider_type, from)
                     .await?;
             }
-            SupportedChain::Tron => {}
-            SupportedChain::ArbitrumOne => {}
-            SupportedChain::ArbitrumNova => {}
-            SupportedChain::Polygon => {
-                let chain_name = "polygon";
-                let provider = provider.replace("[chain]", chain_name);
-                let trace_provider = trace_provider.map(|x| x.replace("[chain]", chain_name));
-
-                ch_polygon::check::check(db, provider, trace_provider, provider_type, from)
-                    .await?;
-            },
-            SupportedChain::Solana => todo!()
+            SupportedChainType::Tron => {}
+            SupportedChainType::Solana => todo!()
         },
     }
     // if args.db.starts_with("clickhouse") {
