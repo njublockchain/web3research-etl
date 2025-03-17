@@ -43,7 +43,7 @@ impl BlockRow {
                 .map(|uncle| uncle.0.to_vec().into())
                 .collect(),
             sha3_uncles: block.uncles_hash.0.to_vec().into(),
-            total_difficulty: u256(block.total_difficulty.unwrap().into()),
+            total_difficulty: u256(block.total_difficulty.unwrap_or_default().into()),
             difficulty: u256(block.difficulty.into()),
             miner: block.author.unwrap().0.to_vec().into(),
             nonce: block.nonce.unwrap().0.to_vec().into(),
