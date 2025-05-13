@@ -13,7 +13,7 @@ use tokio_retry::{
 use url::Url;
 
 use crate::{
-    ch_eth::schema::{BlockRow, EventRow, TraceRow, TransactionRow, WithdrawalRow},
+    ch_eth::{schema::{BlockRow, EventRow, TraceRow, TransactionRow, WithdrawalRow}, utils::{create_provider, EthProvider}},
     ProviderType,
 };
 
@@ -21,8 +21,8 @@ use super::init::get_block_details;
 
 async fn insert_block(
     client: &Client,
-    provider: &Provider<Ws>,
-    trace_provider: &Option<Provider<Http>>,
+    provider: &EthProvider,
+    trace_provider: &Option<EthProvider>,
     provider_type: ProviderType,
     block_number: u64,
 ) -> Result<(), Box<dyn Error>> {
@@ -91,8 +91,8 @@ async fn insert_block(
 
 async fn handle_block(
     client: Client,
-    provider: &Provider<Ws>,
-    trace_provider: &Option<Provider<Http>>,
+    provider: &EthProvider,
+    trace_provider: &Option<EthProvider>,
     provider_type: ProviderType,
     block: Block<H256>,
 ) {
@@ -117,30 +117,70 @@ async fn handle_block(
 
 async fn listen_updates(
     client: Client,
-    provider: Provider<Ws>,
-    trace_provider: Option<Provider<Http>>,
+    provider: EthProvider,
+    trace_provider: Option<EthProvider>,
     provider_type: ProviderType,
 ) {
     // if in db, update it
     // https://clickhouse.com/docs/en/guides/developer/deduplication
     debug!("start listening to new blocks");
-    let mut stream = provider.subscribe_blocks().await.unwrap();
-
-    while let Some(block) = stream.next().await {
-        // handle blocks
-        warn!(
-            "new block {:#032x} @ {}",
-            block.hash.unwrap(),
-            block.number.unwrap()
-        );
-        handle_block(
-            client.clone(),
-            &provider,
-            &trace_provider,
-            provider_type,
-            block,
-        )
-        .await;
+    
+    // Try to subscribe to blocks if provider supports it (WebSocket)
+    match provider.subscribe_blocks().await {
+        Ok(mut stream) => {
+            while let Some(block) = stream.next().await {
+                // handle blocks
+                warn!(
+                    "new block {:#032x} @ {}",
+                    block.hash.unwrap(),
+                    block.number.unwrap()
+                );
+                handle_block(
+                    client.clone(),
+                    &provider,
+                    &trace_provider,
+                    provider_type,
+                    block,
+                )
+                .await;
+            }
+        },
+        Err(e) => {
+            // If subscription is not supported (HTTP provider), poll for blocks periodically
+            warn!("Block subscription not supported: {}, falling back to polling", e);
+            let mut interval = tokio::time::interval(Duration::from_secs(10));
+            let mut last_block_number = 0;
+            
+            loop {
+                interval.tick().await;
+                match provider.get_block_number().await {
+                    Ok(current_block) => {
+                        let current_block_number = current_block.as_u64();
+                        if current_block_number > last_block_number {
+                            for block_num in (last_block_number + 1)..=current_block_number {
+                                if let Ok(Some(block)) = provider.get_block(block_num).await {
+                                    warn!(
+                                        "new block {:#032x} @ {}",
+                                        block.hash.unwrap(),
+                                        block.number.unwrap()
+                                    );
+                                    handle_block(
+                                        client.clone(),
+                                        &provider,
+                                        &trace_provider,
+                                        provider_type,
+                                        block,
+                                    )
+                                    .await;
+                                }
+                            }
+                            last_block_number = current_block_number;
+                        }
+                    },
+                    Err(e) => error!("Failed to get block number: {}", e),
+                }
+            }
+        }
     }
 }
 
@@ -156,8 +196,8 @@ struct CountRaw {
 
 pub async fn health_check(
     client: Client,
-    provider: &Provider<Ws>,
-    trace_provider: &Option<Provider<Http>>,
+    provider: &EthProvider,
+    trace_provider: &Option<EthProvider>,
     provider_type: ProviderType,
     num: u64,
 ) {
@@ -328,8 +368,8 @@ pub async fn health_check(
 
 async fn interval_health_check(
     client: Client,
-    provider: &Provider<Ws>,
-    trace_provider: &Option<Provider<Http>>,
+    provider: &EthProvider,
+    trace_provider: &Option<EthProvider>,
     provider_type: ProviderType,
 ) -> Result<(), Box<dyn Error>> {
     #[derive(Row, Clone, Debug)]
@@ -381,10 +421,19 @@ pub(crate) async fn sync(
 
     debug!("start listening");
 
-    let provider_for_listen = Provider::<Ws>::connect(&provider_ws).await?;
-    let trace_provider_for_listen = provider_http
-        .clone()
-        .map(|provider_http| Provider::try_from(&provider_http).unwrap());
+    // Create provider directly based on URL type (WS or HTTP)
+    let provider_for_listen = create_provider(&provider_ws).await?;
+    info!("Created main provider of type: {}", provider_for_listen.provider_type());
+    
+    // Create trace provider directly based on URL type (WS or HTTP)
+    let trace_provider_for_listen = match provider_http.clone() {
+        Some(http_url) => {
+            let provider = create_provider(&http_url).await?;
+            info!("Created trace provider of type: {}", provider.provider_type());
+            Some(provider)
+        },
+        None => None
+    };
 
     let clickhouse_client_for_listen = Client::connect(
         format!(
@@ -416,10 +465,19 @@ pub(crate) async fn sync(
         )
         .await?;
 
-        let provider_for_health = Provider::<Ws>::connect(&provider_ws).await?;
-        let trace_provider_for_health = provider_http
-            .clone()
-            .map(|provider_http| Provider::try_from(&provider_http).unwrap());
+        // Create provider directly based on URL type (WS or HTTP)
+        let provider_for_health = create_provider(&provider_ws).await?;
+        debug!("Created health check provider of type: {}", provider_for_health.provider_type());
+        
+        // Create trace provider directly based on URL type (WS or HTTP)
+        let trace_provider_for_health = match provider_http.clone() {
+            Some(http_url) => {
+                let provider = create_provider(&http_url).await?;
+                debug!("Created health check trace provider of type: {}", provider.provider_type());
+                Some(provider)
+            },
+            None => None
+        };
 
         interval_health_check(
             clickhouse_client_for_health,

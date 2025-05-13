@@ -12,13 +12,13 @@ use tokio_retry::{
 use url::Url;
 
 use crate::{
-    ch_eth::schema::{BlockRow, EventRow, TraceRow, TransactionRow, WithdrawalRow},
+    ch_eth::{schema::{BlockRow, EventRow, TraceRow, TransactionRow, WithdrawalRow}, utils::{create_provider, EthProvider}},
     ProviderType,
 };
 
 pub async fn get_block_details(
-    provider: &Provider<Ws>,
-    trace_provider: &Option<Provider<Http>>,
+    provider: &EthProvider,
+    trace_provider: &Option<EthProvider>,
     with_get_block_receipts_rpc: bool,
     num: u64,
 ) -> Result<
@@ -98,9 +98,9 @@ pub async fn get_block_details(
 
 pub(crate) async fn init(
     db: String,
-    provider_ws: String,
-    provider_http: Option<String>,
-    provider_type: ProviderType,
+    provider_url: String,
+    trace_provider_url: Option<String>,
+    trace_provider_type: ProviderType,
     from: u64,
     batch: u64,
 ) -> Result<(), Box<dyn Error>> {
@@ -132,9 +132,20 @@ pub(crate) async fn init(
     )
     .await?;
 
-    let provider_ws = Provider::<Ws>::connect(provider_ws).await?;
-    let provider_http =
-        provider_http.map(|provider_http| Provider::try_from(provider_http).unwrap());
+
+    // Create provider directly based on URL type (WS or HTTP)
+    let provider = create_provider(&provider_url).await?;
+    info!("Created main provider of type: {} for URL: {}", provider.provider_type(), provider_url);
+    
+    // Create trace provider if URL is provided
+    let trace_provider = match trace_provider_url {
+        Some(url) => {
+            let provider = create_provider(&url).await?;
+            info!("Created trace provider of type: {}", provider.provider_type());
+            Some(provider)
+        },
+        None => None
+    };
 
     debug!("start initializing schema");
     klient
@@ -341,7 +352,7 @@ pub(crate) async fn init(
         .unwrap();
     debug!("schema initialized");
 
-    let latest: u64 = provider_ws.get_block_number().await?.as_u64();
+    let latest: u64 = provider.get_block_number().await?.as_u64();
     let to = latest / 1_000 * 1_000;
 
     warn!("target: {}", to);
@@ -360,9 +371,9 @@ pub(crate) async fn init(
     for num in from..=to {
         let (block, receipts, traces) = Retry::spawn(retry_strategy.clone(), || {
             get_block_details(
-                &provider_ws,
-                &provider_http,
-                provider_type == ProviderType::Erigon,
+                &provider,
+                &trace_provider,
+                trace_provider_type == ProviderType::Erigon,
                 num,
             )
         })

@@ -1,11 +1,11 @@
 use std::error::Error;
 
-use ethers::providers::{Middleware, Provider, Ws};
+use ethers::providers::Middleware;
 use klickhouse::{Client, ClientOptions, Row};
 use log::{debug, info};
 use url::Url;
 
-use crate::{ch_eth::sync::health_check, ProviderType};
+use crate::{ch_eth::{sync::health_check, utils::{create_provider}}, ProviderType};
 
 pub(crate) async fn check(
     db: String,
@@ -30,9 +30,17 @@ pub(crate) async fn check(
 
     debug!("start listening");
 
-    let provider = Provider::<Ws>::connect(&provider_uri).await?;
-    let trace_provider = trace_provider_uri
-        .map(|trace_provider_uri| Provider::try_from(&trace_provider_uri).unwrap());
+    let provider = create_provider(&provider_uri).await?;
+    info!("Created check provider of type: {}", provider.provider_type());
+    
+    let trace_provider = match trace_provider_uri {
+        Some(trace_uri) => {
+            let provider = create_provider(&trace_uri).await?;
+            info!("Created check trace provider of type: {}", provider.provider_type());
+            Some(provider)
+        },
+        None => None
+    };
 
     let client = Client::connect(
         format!(

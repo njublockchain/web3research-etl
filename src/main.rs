@@ -5,6 +5,8 @@ mod ch_solana;
 
 use clap::Parser;
 use std::error::Error;
+use ethers::providers::{Http, Provider, Ws};
+use url::Url;
 
 extern crate pretty_env_logger;
 

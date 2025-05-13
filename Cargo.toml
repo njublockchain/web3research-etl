@@ -29,6 +29,9 @@ itertools = "^0.12.1"
 solana-client = "^2.0.1"
 solana-transaction-status = "^2.0.1"
 solana-sdk = "^2.0.1"
+async-stream = "^0.3.5"
+tokio-stream = "^0.1.14"
+futures = "^0.3.28"
 
 [dependencies.ethers]
 version = "^2.0.14"
