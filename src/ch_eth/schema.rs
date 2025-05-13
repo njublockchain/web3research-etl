@@ -1,8 +1,34 @@
+use documented::Documented;
 use ethers::types::{Action, Block, Log, Res, Trace, Transaction, TransactionReceipt, Withdrawal};
 use klickhouse::{u256, Bytes, Row};
 use serde_variant::to_variant_name;
 
-#[derive(Row, Clone, Debug, Default)]
+/** CREATE TABLE IF NOT EXISTS blocks (
+    hash             FixedString(32),
+    number           UInt64,
+    parentHash       FixedString(32),
+    uncles           Array(String),
+    sha3Uncles       FixedString(32),
+    totalDifficulty  UInt256,
+    miner            FixedString(20),
+    difficulty       UInt256,
+    nonce            FixedString(8),
+    mixHash          FixedString(32),
+    baseFeePerGas    Nullable(UInt256),
+    gasLimit         UInt256,
+    gasUsed          UInt256,
+    stateRoot        FixedString(32),
+    transactionsRoot FixedString(32),
+    receiptsRoot     FixedString(32),
+    logsBloom        String,
+    withdrawlsRoot   Nullable(FixedString(32)),
+    extraData        String,
+    timestamp        UInt256,
+    size             UInt256
+) ENGINE=ReplacingMergeTree
+ORDER BY (hash, number);
+*/
+#[derive(Row, Clone, Debug, Default, Documented)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct BlockRow {
     pub hash: Bytes,
@@ -63,7 +89,39 @@ impl BlockRow {
     }
 }
 
-#[derive(Row, Clone, Debug, Default)]
+/** CREATE TABLE IF NOT EXISTS transactions (
+    hash             FixedString(32),
+    blockHash        FixedString(32),
+    blockNumber      UInt64,
+    blockTimestamp   UInt256,
+    transactionIndex UInt64,
+    chainId          Nullable(UInt256),
+    type             Nullable(UInt64),
+    from             FixedString(20),
+    to               Nullable(FixedString(20)),
+    value            UInt256,
+    nonce            UInt256,
+    input            String,
+    gas              UInt256,
+    gasPrice         Nullable(UInt256),
+    maxFeePerGas     Nullable(UInt256),
+    maxPriorityFeePerGas Nullable(UInt256),
+    r                UInt256,
+    s                UInt256,
+    v                UInt64,
+    accessList       Nullable(String),
+    contractAddress  Nullable(FixedString(20)),
+    cumulativeGasUsed UInt256,
+    effectiveGasPrice Nullable(UInt256),
+    gasUsed          UInt256,
+    logsBloom        String,
+    root             Nullable(FixedString(32)),
+    status           Nullable(UInt64)
+) ENGINE=ReplacingMergeTree
+ORDER BY (blockNumber, blockTimestamp, blockHash, from, nonce, to, transactionIndex, hash)
+SETTINGS index_granularity = 8192, allow_nullable_key=1;
+*/
+#[derive(Row, Clone, Debug, Default, Documented)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct TransactionRow {
     pub hash: Bytes,
@@ -143,7 +201,26 @@ impl TransactionRow {
     }
 }
 
-#[derive(Row, Clone, Debug, Default)]
+/** CREATE TABLE IF NOT EXISTS events (
+    `address` FixedString(20),
+    `blockHash` FixedString(32),
+    `blockNumber` UInt64,
+    `blockTimestamp` UInt256,
+    `transactionHash` FixedString(32),
+    `transactionIndex` UInt64,
+    `logIndex` UInt256,
+    `removed` Bool,
+    `topic0` Nullable(FixedString(32)),
+    `topic1` Nullable(FixedString(32)),
+    `topic2` Nullable(FixedString(32)),
+    `topic3` Nullable(FixedString(32)),
+    `data` String
+)
+ENGINE = ReplacingMergeTree
+ORDER BY (removed, address, topic0, topic1, topic2, topic3, transactionHash, logIndex)
+SETTINGS index_granularity = 8192, allow_nullable_key=1;
+*/
+#[derive(Row, Clone, Debug, Default, Documented)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct EventRow {
     pub block_hash: Bytes,
@@ -190,7 +267,18 @@ impl EventRow {
     }
 }
 
-#[derive(Row, Clone, Debug, Default)]
+/** CREATE TABLE IF NOT EXISTS withdraws (
+    blockHash String,
+    blockNumber UInt64,
+    blockTimestamp UInt256,
+    `index` UInt64,
+    validatorIndex UInt64,
+    address FixedString(20),
+    amount UInt256
+) ENGINE=ReplacingMergeTree
+ORDER BY (blockHash, index);
+*/
+#[derive(Row, Clone, Debug, Default, Documented)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct WithdrawalRow {
     pub block_hash: Bytes,
@@ -219,7 +307,44 @@ impl WithdrawalRow {
     }
 }
 
-#[derive(Row, Clone, Debug)]
+/** CREATE TABLE IF NOT EXISTS traces (
+    `blockPos`    UInt64,
+    `blockNumber` UInt64,
+    `blockTimestamp` UInt256,
+    `blockHash` FixedString(32),
+    `transactionHash` Nullable(FixedString(32)),
+    `traceAddress` Array(UInt64),
+    `subtraces` UInt64,
+    `transactionPosition` Nullable(UInt64),
+    `error` Nullable(String),
+    `actionType` LowCardinality(String),
+    `actionCallFrom` Nullable(FixedString(20)),
+    `actionCallTo` Nullable(FixedString(20)),
+    `actionCallValue` Nullable(UInt256),
+    `actionCallInput` Nullable(String),
+    `actionCallGas` Nullable(UInt256),
+    `actionCallType` LowCardinality(String),
+    `actionCreateFrom` Nullable(FixedString(20)),
+    `actionCreateValue` Nullable(UInt256),
+    `actionCreateInit` Nullable(String),
+    `actionCreateGas` Nullable(UInt256),
+    `actionSuicideAddress` Nullable(FixedString(20)),
+    `actionSuicideRefundAddress` Nullable(FixedString(20)),
+    `actionSuicideBalance` Nullable(UInt256),
+    `actionRewardAuthor` Nullable(FixedString(20)),
+    `actionRewardValue` Nullable(UInt256),
+    `actionRewardType` LowCardinality(String),
+    `resultType` LowCardinality(String),
+    `resultCallGasUsed` Nullable(UInt256),
+    `resultCallOutput` Nullable(String),
+    `resultCreateGasUsed` Nullable(UInt256),
+    `resultCreateCode` Nullable(String),
+    `resultCreateAddress` Nullable(FixedString(20))
+)
+ENGINE = ReplacingMergeTree
+ORDER BY (blockNumber, blockPos);
+*/
+#[derive(Row, Clone, Debug, Documented)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct TraceRow {
     pub block_pos: u64,

@@ -147,13 +147,3 @@ pub async fn create_provider(provider_url: &str) -> Result<EthProvider, Box<dyn 
         Ok(EthProvider::Http(provider))
     }
 }
-
-/// Create a WS Provider (kept for backward compatibility)
-pub async fn create_ws_provider(provider_url: &str) -> Result<Provider<Ws>, Box<dyn Error>> {
-    Ok(Provider::<Ws>::connect(provider_url).await?)
-}
-
-/// Create an HTTP provider (kept for backward compatibility)
-pub fn create_http_provider(provider_url: &str) -> Result<Provider<Http>, Box<dyn Error>> {
-    Ok(Provider::<Http>::try_from(provider_url)?)
-}

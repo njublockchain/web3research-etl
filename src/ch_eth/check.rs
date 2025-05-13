@@ -1,11 +1,12 @@
-use std::error::Error;
-
-use ethers::providers::Middleware;
 use klickhouse::{Client, ClientOptions, Row};
 use log::{debug, info};
+use std::error::Error;
 use url::Url;
 
-use crate::{ch_eth::{sync::health_check, utils::{create_provider}}, ProviderType};
+use crate::{
+    ch_eth::{sync::health_check, utils::create_provider},
+    ProviderType,
+};
 
 pub(crate) async fn check(
     db: String,
@@ -22,7 +23,12 @@ pub(crate) async fn check(
             ClientOptions {
                 username: clickhouse_url.username().to_string(),
                 password: clickhouse_url.password().unwrap_or("").to_string(),
-                default_database: clickhouse_url.path().to_string().strip_prefix('/').unwrap().to_string(),
+                default_database: clickhouse_url
+                    .path()
+                    .to_string()
+                    .strip_prefix('/')
+                    .unwrap()
+                    .to_string(),
             }
         } else {
             ClientOptions::default()
@@ -31,15 +37,21 @@ pub(crate) async fn check(
     debug!("start listening");
 
     let provider = create_provider(&provider_uri).await?;
-    info!("Created check provider of type: {}", provider.provider_type());
-    
+    info!(
+        "Created check provider of type: {}",
+        provider.provider_type()
+    );
+
     let trace_provider = match trace_provider_uri {
         Some(trace_uri) => {
             let provider = create_provider(&trace_uri).await?;
-            info!("Created check trace provider of type: {}", provider.provider_type());
+            info!(
+                "Created check trace provider of type: {}",
+                provider.provider_type()
+            );
             Some(provider)
-        },
-        None => None
+        }
+        None => None,
     };
 
     let client = Client::connect(
@@ -67,7 +79,14 @@ pub(crate) async fn check(
     // let from = local_height.max + 1;
 
     for num in from..=latest {
-        health_check(client.clone(), &provider, &trace_provider, provider_type, num).await;
+        health_check(
+            client.clone(),
+            &provider,
+            &trace_provider,
+            provider_type,
+            num,
+        )
+        .await;
     }
 
     Ok(())

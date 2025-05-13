@@ -1,11 +1,10 @@
-use std::{error::Error, time::Duration};
-
 use ethers::{
-    providers::{Http, Middleware, Provider, StreamExt, Ws},
+    providers::StreamExt,
     types::{Block, H256},
 };
 use klickhouse::{Client, ClientOptions, Row};
 use log::{debug, error, info, warn};
+use std::{error::Error, time::Duration};
 use tokio_retry::{
     strategy::{jitter, ExponentialBackoff},
     Retry,
@@ -13,7 +12,10 @@ use tokio_retry::{
 use url::Url;
 
 use crate::{
-    ch_eth::{schema::{BlockRow, EventRow, TraceRow, TransactionRow, WithdrawalRow}, utils::{create_provider, EthProvider}},
+    ch_eth::{
+        schema::{BlockRow, EventRow, TraceRow, TransactionRow, WithdrawalRow},
+        utils::{create_provider, EthProvider},
+    },
     ProviderType,
 };
 
@@ -124,7 +126,7 @@ async fn listen_updates(
     // if in db, update it
     // https://clickhouse.com/docs/en/guides/developer/deduplication
     debug!("start listening to new blocks");
-    
+
     // Try to subscribe to blocks if provider supports it (WebSocket)
     match provider.subscribe_blocks().await {
         Ok(mut stream) => {
@@ -144,13 +146,16 @@ async fn listen_updates(
                 )
                 .await;
             }
-        },
+        }
         Err(e) => {
             // If subscription is not supported (HTTP provider), poll for blocks periodically
-            warn!("Block subscription not supported: {}, falling back to polling", e);
+            warn!(
+                "Block subscription not supported: {}, falling back to polling",
+                e
+            );
             let mut interval = tokio::time::interval(Duration::from_secs(10));
             let mut last_block_number = 0;
-            
+
             loop {
                 interval.tick().await;
                 match provider.get_block_number().await {
@@ -176,7 +181,7 @@ async fn listen_updates(
                             }
                             last_block_number = current_block_number;
                         }
-                    },
+                    }
                     Err(e) => error!("Failed to get block number: {}", e),
                 }
             }
@@ -423,16 +428,22 @@ pub(crate) async fn sync(
 
     // Create provider directly based on URL type (WS or HTTP)
     let provider_for_listen = create_provider(&provider_ws).await?;
-    info!("Created main provider of type: {}", provider_for_listen.provider_type());
-    
+    info!(
+        "Created main provider of type: {}",
+        provider_for_listen.provider_type()
+    );
+
     // Create trace provider directly based on URL type (WS or HTTP)
     let trace_provider_for_listen = match provider_http.clone() {
         Some(http_url) => {
             let provider = create_provider(&http_url).await?;
-            info!("Created trace provider of type: {}", provider.provider_type());
+            info!(
+                "Created trace provider of type: {}",
+                provider.provider_type()
+            );
             Some(provider)
-        },
-        None => None
+        }
+        None => None,
     };
 
     let clickhouse_client_for_listen = Client::connect(
@@ -467,16 +478,22 @@ pub(crate) async fn sync(
 
         // Create provider directly based on URL type (WS or HTTP)
         let provider_for_health = create_provider(&provider_ws).await?;
-        debug!("Created health check provider of type: {}", provider_for_health.provider_type());
-        
+        debug!(
+            "Created health check provider of type: {}",
+            provider_for_health.provider_type()
+        );
+
         // Create trace provider directly based on URL type (WS or HTTP)
         let trace_provider_for_health = match provider_http.clone() {
             Some(http_url) => {
                 let provider = create_provider(&http_url).await?;
-                debug!("Created health check trace provider of type: {}", provider.provider_type());
+                debug!(
+                    "Created health check trace provider of type: {}",
+                    provider.provider_type()
+                );
                 Some(provider)
-            },
-            None => None
+            }
+            None => None,
         };
 
         interval_health_check(
