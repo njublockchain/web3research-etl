@@ -1,8 +1,7 @@
-use std::error::Error;
-
-use bitcoin::{hashes::Hash, Address};
-use bitcoincore_rpc::{Client, RpcApi};
+use bitcoincore_rpc::RpcApi;
+use documented::Documented;
 use log::{debug, info, warn};
+use std::error::Error;
 use url::Url;
 
 use crate::{
@@ -10,311 +9,157 @@ use crate::{
     ProviderType,
 };
 
-pub(crate) async fn init(
-    db: String,
-    provider: String,
-    provider_type: ProviderType,
-    from: u64,
-    batch: u64,
+// Helper function to insert batch data into ClickHouse
+async fn insert_batch_data(
+    client: &clickhouse::Client,
+    block_rows: &[BlockRow],
+    input_rows: &[InputRow],
+    output_rows: &[OutputRow],
 ) -> Result<(), Box<dyn Error>> {
-    let clickhouse_url = Url::parse(&db).unwrap();
-    // warn!("db: {} path: {}", format!("{}:{}", clickhouse_url.host().unwrap(), clickhouse_url.port().unwrap()), clickhouse_url.path());
-
-    let options = if clickhouse_url.path() != "/default" || !clickhouse_url.username().is_empty() {
-        warn!("auth enabled for clickhouse");
-        klickhouse::ClientOptions {
-            username: clickhouse_url.username().to_string(),
-            password: clickhouse_url.password().unwrap_or("").to_string(),
-            default_database: clickhouse_url
-                .path()
-                .to_string()
-                .strip_prefix('/')
-                .unwrap()
-                .to_string(),
+    if !input_rows.is_empty() {
+        let mut inserter = client.insert("inputs")?;
+        for row in input_rows {
+            inserter.write(row).await?;
         }
-    } else {
-        klickhouse::ClientOptions::default()
-    };
+        inserter.end().await?;
+    }
 
-    let klient = klickhouse::Client::connect(
-        format!(
-            "{}:{}",
-            clickhouse_url.host().unwrap(),
-            clickhouse_url.port().unwrap()
-        ),
-        options.clone(),
-    )
-    .await?;
+    if !output_rows.is_empty() {
+        let mut inserter = client.insert("outputs")?;
+        for row in output_rows {
+            inserter.write(row).await?;
+        }
+        inserter.end().await?;
+    }
 
-    let bitcoin_rpc_url = Url::parse(&provider).unwrap();
+    if !block_rows.is_empty() {
+        let mut inserter = client.insert("blocks")?;
+        for row in block_rows {
+            inserter.write(row).await?;
+        }
+        inserter.end().await?;
+    }
 
-    let provider = bitcoincore_rpc::Client::new(
-        format!(
+    Ok(())
+}
+
+pub(crate) async fn init(
+    db_url_str: String,
+    provider_url_str: String,
+    _provider_type: ProviderType,
+    from: u64,
+    batch_size: u64,
+) -> Result<(), Box<dyn Error>> {
+    // Create connection to ClickHouse
+    let parsed_db_url = Url::parse(&db_url_str)?;
+    let database_name = parsed_db_url.path().strip_prefix('/').unwrap_or("default"); // Assuming 'default' is an acceptable fallback
+
+    let ch_client = clickhouse::Client::default()
+        .with_url(&db_url_str)
+        .with_database(database_name);
+
+    // Create connection to Bitcoin RPC provider
+    let bitcoin_rpc_url = Url::parse(&provider_url_str)?;
+    let rpc_client = bitcoincore_rpc::Client::new(
+        &format!(
             "{}://{}:{}",
             bitcoin_rpc_url.scheme(),
-            bitcoin_rpc_url.host_str().unwrap_or("localhost"),
-            bitcoin_rpc_url.port_or_known_default().unwrap_or(8332),
-        )
-        .as_str(),
+            bitcoin_rpc_url
+                .host_str()
+                .ok_or("Bitcoin RPC host not found in URL")?,
+            bitcoin_rpc_url.port_or_known_default().unwrap_or(8332), // Default Bitcoin RPC port
+        ),
         bitcoincore_rpc::Auth::UserPass(
             bitcoin_rpc_url.username().to_string(),
             bitcoin_rpc_url.password().unwrap_or("").to_string(),
         ),
-    )
-    .unwrap();
+    )?;
 
-    debug!("start initializing schema");
-    klient
-        .execute(format!("CREATE DATABASE IF NOT EXISTS {}", options.default_database).as_str())
+    debug!("Start initializing schema");
+    ch_client
+        .query(&format!("CREATE DATABASE IF NOT EXISTS {}", database_name))
+        .execute()
         .await?;
 
-    klient
-        .execute(
-            "
-            -- blocks definition
+    // Create tables
+    ch_client.query(BlockRow::DOCS).execute().await?;
+    ch_client.query(InputRow::DOCS).execute().await?;
+    ch_client.query(OutputRow::DOCS).execute().await?;
 
-            CREATE TABLE IF NOT EXISTS blocks
-            (
-            
-                `height` UInt64,
-            
-                `hash` FixedString(32),
-            
-                `size` UInt32,
-            
-                `strippedSize` UInt32,
-            
-                `weight` UInt64,
-            
-                `prevBlockHash` FixedString(32),
-            
-                `version` Int32,
-            
-                `merkleRoot` FixedString(32),
-            
-                `time` UInt32,
-            
-                `bits` UInt32,
-            
-                `nonce` UInt32,
-            
-                `difficulty` UInt128
-            )
-            ENGINE = ReplacingMergeTree
-            ORDER BY height
-            SETTINGS index_granularity = 8192;
-        ",
-        )
-        .await
-        .unwrap();
+    let latest_height = rpc_client.get_block_count()? - 1;
+    let to = latest_height / 1000 * 1000; // Process up to the largest multiple of 1000 <= latest_height
+    warn!("Target block height: {}", to);
 
-    klient
-        .execute(
-            "
-            -- inputs definition
+    if from > to {
+        info!(
+            "'from' height ({}) is greater than target height ({}). No blocks to process.",
+            from, to
+        );
+        return Ok(());
+    }
+    if batch_size == 0 {
+        return Err("Batch size must be greater than 0".into());
+    }
 
-            CREATE TABLE IF NOT EXISTS inputs
-            (
-            
-                `txid` FixedString(32),
-            
-                `size` UInt32,
-            
-                `vsize` UInt32,
-            
-                `weight` UInt64,
-            
-                `version` Int32,
-            
-                `lockTime` UInt32,
-            
-                `blockHash` FixedString(32),
-            
-                `blockHeight` UInt64,
-            
-                `blockTime` UInt32,
-            
-                `index` UInt32,
-            
-                `prevOutputTxid` FixedString(32),
-            
-                `prevOutputVout` UInt32,
-            
-                `scriptSig` String,
-
-                `sequence` UInt32,
-            
-                `witness` Array(String)
-            )
-            ENGINE = ReplacingMergeTree
-            ORDER BY (txid,
-             index)
-            SETTINGS index_granularity = 8192;
-        ",
-        )
-        .await
-        .unwrap();
-
-    klient
-        .execute(
-            "
-            -- outputs definition
-
-            CREATE TABLE IF NOT EXISTS outputs
-            (
-            
-                `txid` FixedString(32),
-            
-                `size` UInt32,
-            
-                `vsize` UInt32,
-            
-                `weight` UInt64,
-            
-                `version` Int32,
-            
-                `lockTime` UInt32,
-            
-                `blockHash` FixedString(32),
-            
-                `blockHeight` UInt64,
-            
-                `blockTime` UInt32,
-            
-                `index` UInt32,
-            
-                `value` UInt64,
-            
-                `scriptPubkey` String,
-            
-                `address` Nullable(String)
-            )
-            ENGINE = ReplacingMergeTree
-            ORDER BY (txid,
-             index)
-            SETTINGS index_granularity = 8192;
-        ",
-        )
-        .await
-        .unwrap();
-
-    let latest_height = provider.get_block_count()? - 1;
-    let to = latest_height / 1000 * 1000;
-    warn!("target: {}", to);
-
-    let mut block_row_list = Vec::with_capacity((batch + 1_u64) as usize);
-    let mut input_row_list = Vec::new();
-    let mut output_row_list = Vec::new();
+    let mut block_row_list = Vec::with_capacity(batch_size as usize);
+    let mut input_row_list = Vec::new(); // Capacity will grow as needed
+    let mut output_row_list = Vec::new(); // Capacity will grow as needed
 
     for num in from..=to {
-        let hash = provider.get_block_hash(num)?;
-        // let cli = client.get_jsonrpc_client();
-        let block = provider.get_block(&hash)?;
-        let block_hash = block.block_hash();
+        let height = num;
 
-        let block_row = BlockRow {
-            height: num,
-            hash: block_hash.as_byte_array().to_vec().into(),
-            size: block.size() as u32,
-            stripped_size: block.strippedsize() as u32,
-            weight: block.weight().to_wu(),
-            prev_block_hash: block.header.prev_blockhash.as_byte_array().to_vec().into(),
-            version: block.header.version.to_consensus(),
-            merkle_root: block.header.merkle_root.to_byte_array().to_vec().into(),
-            time: block.header.time,
-            bits: block.header.bits.to_consensus(),
-            nonce: block.header.nonce,
-            difficulty: block.header.difficulty(),
-        };
+        let block_hash_rpc = rpc_client.get_block_hash(height)?;
+        let block = rpc_client.get_block(&block_hash_rpc)?;
 
-        block_row_list.push(block_row);
+        block_row_list.push(BlockRow::from_bitcoin_rpc(height, &block));
 
-        for tx in block.txdata {
+        for tx in &block.txdata {
             for (index, vin) in tx.input.iter().enumerate() {
-                let input_row = InputRow {
-                    txid: tx.txid().as_byte_array().to_vec().into(),
-                    size: tx.size() as u32,
-                    vsize: tx.vsize() as u32,
-                    weight: tx.weight().to_wu(),
-                    version: tx.version,
-                    lock_time: tx.lock_time.to_consensus_u32(),
-                    block_hash: block_hash.as_byte_array().to_vec().into(),
-                    block_height: num,
-                    block_time: block.header.time,
-                    index: index as u32,
-                    prev_output_txid: vin.previous_output.txid.as_byte_array().to_vec().into(),
-                    prev_output_vout: vin.previous_output.vout,
-                    script_sig: vin.script_sig.to_bytes().to_vec().into(),
-                    sequence: vin.sequence.0,
-                    witness: vin
-                        .witness
-                        .to_vec()
-                        .iter()
-                        .map(|w| w.clone().into())
-                        .collect(),
-                };
-
-                input_row_list.push(input_row);
+                input_row_list.push(InputRow::from_bitcoin_rpc(
+                    height,
+                    &block,
+                    &tx,
+                    index as u32,
+                    vin,
+                ));
             }
 
             for (index, vout) in tx.output.iter().enumerate() {
-                let address = Address::from_script(&vout.script_pubkey, bitcoin::Network::Bitcoin)
-                    .ok()
-                    .map(|s| s.to_string());
-                let output_row = OutputRow {
-                    txid: tx.txid().as_byte_array().to_vec().into(),
-                    size: tx.size() as u32,
-                    vsize: tx.vsize() as u32,
-                    weight: tx.weight().to_wu(),
-                    version: tx.version,
-                    lock_time: tx.lock_time.to_consensus_u32(),
-                    block_hash: block_hash.as_byte_array().to_vec().into(),
-                    block_height: num,
-                    block_time: block.header.time,
-                    index: index as u32,
-                    value: vout.value,
-                    script_pubkey: vout.script_pubkey.to_bytes().to_vec().into(),
-                    address,
-                };
-
-                output_row_list.push(output_row);
+                output_row_list.push(OutputRow::from_bitcoin_rpc(
+                    height,
+                    &block,
+                    &tx,
+                    index as u32,
+                    vout,
+                ));
             }
         }
 
-        if (num - from + 1) % batch == 0 {
-            tokio::try_join!(
-                klient.insert_native_block(
-                    "INSERT INTO blocks FORMAT native",
-                    block_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO inputs FORMAT native",
-                    input_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO outputs FORMAT native",
-                    output_row_list.to_vec()
-                ),
-            )
-            .unwrap();
+        // Insert data if batch is full or if it's the last block in the range
+        if block_row_list.len() >= batch_size as usize || num == to {
+            if !block_row_list.is_empty() {
+                // Ensure there's data to insert
+                insert_batch_data(
+                    &ch_client,
+                    &block_row_list,
+                    &input_row_list,
+                    &output_row_list,
+                )
+                .await?;
 
-            block_row_list.clear();
-            input_row_list.clear();
-            output_row_list.clear();
+                info!(
+                    "Inserted batch of {} blocks (up to height {})",
+                    block_row_list.len(),
+                    num
+                );
 
-            info!("{} done blocks & txs", num)
+                block_row_list.clear();
+                input_row_list.clear();
+                output_row_list.clear();
+            }
         }
     }
 
-    tokio::try_join!(
-        klient.insert_native_block("INSERT INTO blocks FORMAT native", block_row_list.to_vec()),
-        klient.insert_native_block("INSERT INTO inputs FORMAT native", input_row_list.to_vec()),
-        klient.insert_native_block(
-            "INSERT INTO outputs FORMAT native",
-            output_row_list.to_vec()
-        ),
-    )
-    .unwrap();
-
+    info!("BTC initialization complete!");
     Ok(())
 }

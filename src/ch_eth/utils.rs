@@ -147,3 +147,8 @@ pub async fn create_provider(provider_url: &str) -> Result<EthProvider, Box<dyn 
         Ok(EthProvider::Http(provider))
     }
 }
+
+pub fn bytes_to_eth_hex(bytes: &[u8]) -> String {
+    let hex = hex::encode(bytes);
+    format!("0x{}", hex)
+}

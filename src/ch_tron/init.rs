@@ -18,21 +18,24 @@ use tron_grpc::{
 };
 use url::Url;
 
-use crate::ch_tron::schema::{
-    AccountCreateContractRow, AccountPermissionUpdateContractRow, AccountUpdateContractRow,
-    AssetIssueContractRow, BlockRow, CancelAllUnfreezeV2ContractRow, ClearAbiContractRow,
-    CreateSmartContractRow, DelegateResourceContractRow, ExchangeCreateContractRow,
-    ExchangeInjectContractRow, ExchangeTransactionContractRow, ExchangeWithdrawContractRow,
-    FreezeBalanceContractRow, FreezeBalanceV2ContractRow, InternalTransactionRow, LogRow,
-    MarketCancelOrderContractRow, MarketSellAssetContractRow, ParticipateAssetIssueContractRow,
-    ProposalApproveContractRow, ProposalCreateContractRow, ProposalDeleteContractRow,
-    SetAccountIdContractRow, ShieldedTransferContractRow, TransactionRow, TransferAssetContractRow,
-    TransferContractRow, TriggerSmartContractRow, UndelegateResourceContractRow,
-    UnfreezeAssetContractRow, UnfreezeBalanceContractRow, UnfreezeBalanceV2ContractRow,
-    UpdateAssetContractRow, UpdateBrokerageContractRow, UpdateEnergyLimitContractRow,
-    UpdateSettingContractRow, VoteAssetContractRow, VoteWitnessContractRow,
-    WithdrawBalanceContractRow, WithdrawExpireUnfreezeContractRow, WitnessCreateContractRow,
-    WitnessUpdateContractRow,
+use crate::ch_tron::{
+    schema::{
+        AccountCreateContractRow, AccountPermissionUpdateContractRow, AccountUpdateContractRow,
+        AssetIssueContractRow, BlockRow, CancelAllUnfreezeV2ContractRow, ClearAbiContractRow,
+        CreateSmartContractRow, DelegateResourceContractRow, ExchangeCreateContractRow,
+        ExchangeInjectContractRow, ExchangeTransactionContractRow, ExchangeWithdrawContractRow,
+        FreezeBalanceContractRow, FreezeBalanceV2ContractRow, InternalTransactionRow, LogRow,
+        MarketCancelOrderContractRow, MarketSellAssetContractRow, ParticipateAssetIssueContractRow,
+        ProposalApproveContractRow, ProposalCreateContractRow, ProposalDeleteContractRow,
+        SetAccountIdContractRow, ShieldedTransferContractRow, TransactionRow,
+        TransferAssetContractRow, TransferContractRow, TriggerSmartContractRow,
+        UndelegateResourceContractRow, UnfreezeAssetContractRow, UnfreezeBalanceContractRow,
+        UnfreezeBalanceV2ContractRow, UpdateAssetContractRow, UpdateBrokerageContractRow,
+        UpdateEnergyLimitContractRow, UpdateSettingContractRow, VoteAssetContractRow,
+        VoteWitnessContractRow, WithdrawBalanceContractRow, WithdrawExpireUnfreezeContractRow,
+        WitnessCreateContractRow, WitnessUpdateContractRow,
+    },
+    utils,
 };
 
 pub(crate) async fn init(
@@ -41,181 +44,163 @@ pub(crate) async fn init(
     from: u64,
     batch: u64,
 ) -> Result<(), Box<dyn Error>> {
-    let clickhouse_url = Url::parse(&db).unwrap();
-    // warn!("db: {} path: {}", format!("{}:{}", clickhouse_url.host().unwrap(), clickhouse_url.port().unwrap()), clickhouse_url.path());
-
-    let options = if clickhouse_url.path() != "/default" || !clickhouse_url.username().is_empty() {
-        warn!("auth enabled for clickhouse");
-        klickhouse::ClientOptions {
-            username: clickhouse_url.username().to_string(),
-            password: clickhouse_url.password().unwrap_or("").to_string(),
-            default_database: clickhouse_url
-                .path()
-                .to_string()
-                .strip_prefix('/')
-                .unwrap()
-                .to_string(),
-        }
-    } else {
-        klickhouse::ClientOptions::default()
-    };
-
-    let klient = klickhouse::Client::connect(
-        format!(
-            "{}:{}",
-            clickhouse_url.host().unwrap(),
-            clickhouse_url.port().unwrap()
-        ),
-        options.clone(),
-    )
-    .await?;
+    // Create a client with the given database
+    let client = clickhouse::Client::default().with_url(&db).with_database(
+        Url::parse(&db)
+            .unwrap()
+            .path()
+            .strip_prefix('/')
+            .unwrap_or("default"),
+    );
 
     debug!("start initializing schema");
 
     // init all basics
-    klient.execute(BlockRow::DOCS).await.unwrap();
-    klient.execute(TransactionRow::DOCS).await.unwrap();
-    klient.execute(LogRow::DOCS).await.unwrap();
-    klient.execute(InternalTransactionRow::DOCS).await.unwrap();
+    client.query(BlockRow::DOCS).execute().await?;
+    client.query(TransactionRow::DOCS).execute().await?;
+    client.query(LogRow::DOCS).execute().await?;
+    client.query(InternalTransactionRow::DOCS).execute().await?;
 
     // init all contracts
-    klient
-        .execute(AccountCreateContractRow::DOCS)
-        .await
-        .unwrap();
-    klient.execute(TransferContractRow::DOCS).await.unwrap();
-    klient
-        .execute(TransferAssetContractRow::DOCS)
-        .await
-        .unwrap();
-    klient
-        .execute(TransferAssetContractRow::DOCS)
-        .await
-        .unwrap();
-    klient.execute(VoteAssetContractRow::DOCS).await.unwrap();
-    klient.execute(VoteWitnessContractRow::DOCS).await.unwrap();
-    klient
-        .execute(WitnessCreateContractRow::DOCS)
-        .await
-        .unwrap();
-    klient.execute(AssetIssueContractRow::DOCS).await.unwrap();
-    klient
-        .execute(WitnessUpdateContractRow::DOCS)
-        .await
-        .unwrap();
-    klient
-        .execute(ParticipateAssetIssueContractRow::DOCS)
-        .await
-        .unwrap();
-    klient
-        .execute(AccountUpdateContractRow::DOCS)
-        .await
-        .unwrap();
-    klient
-        .execute(FreezeBalanceContractRow::DOCS)
-        .await
-        .unwrap();
-    klient
-        .execute(UnfreezeBalanceContractRow::DOCS)
-        .await
-        .unwrap();
-    klient
-        .execute(WithdrawBalanceContractRow::DOCS)
-        .await
-        .unwrap();
-    klient
-        .execute(UnfreezeAssetContractRow::DOCS)
-        .await
-        .unwrap();
-    klient.execute(UpdateAssetContractRow::DOCS).await.unwrap();
-    klient
-        .execute(ProposalCreateContractRow::DOCS)
-        .await
-        .unwrap();
-    klient
-        .execute(ProposalApproveContractRow::DOCS)
-        .await
-        .unwrap();
-    klient
-        .execute(ProposalDeleteContractRow::DOCS)
-        .await
-        .unwrap();
-    klient.execute(SetAccountIdContractRow::DOCS).await.unwrap();
-    klient.execute(CreateSmartContractRow::DOCS).await.unwrap();
-    klient.execute(TriggerSmartContractRow::DOCS).await.unwrap();
-    klient
-        .execute(UpdateSettingContractRow::DOCS)
-        .await
-        .unwrap();
-    klient
-        .execute(ExchangeCreateContractRow::DOCS)
-        .await
-        .unwrap();
-    klient
-        .execute(ExchangeInjectContractRow::DOCS)
-        .await
-        .unwrap();
-    klient
-        .execute(ExchangeWithdrawContractRow::DOCS)
-        .await
-        .unwrap();
-    klient
-        .execute(ExchangeTransactionContractRow::DOCS)
-        .await
-        .unwrap();
-    klient
-        .execute(UpdateEnergyLimitContractRow::DOCS)
-        .await
-        .unwrap();
-    klient
-        .execute(AccountPermissionUpdateContractRow::DOCS)
-        .await
-        .unwrap();
-    klient.execute(ClearAbiContractRow::DOCS).await.unwrap();
-    klient
-        .execute(UpdateBrokerageContractRow::DOCS)
-        .await
-        .unwrap();
-    klient
-        .execute(ShieldedTransferContractRow::DOCS)
-        .await
-        .unwrap();
-    klient
-        .execute(MarketSellAssetContractRow::DOCS)
-        .await
-        .unwrap();
-    klient
-        .execute(MarketCancelOrderContractRow::DOCS)
-        .await
-        .unwrap();
-    klient
-        .execute(FreezeBalanceV2ContractRow::DOCS)
-        .await
-        .unwrap();
-    klient
-        .execute(UnfreezeBalanceV2ContractRow::DOCS)
-        .await
-        .unwrap();
-    klient
-        .execute(WithdrawExpireUnfreezeContractRow::DOCS)
-        .await
-        .unwrap();
-    klient
-        .execute(DelegateResourceContractRow::DOCS)
-        .await
-        .unwrap();
-    klient
-        .execute(UndelegateResourceContractRow::DOCS)
-        .await
-        .unwrap();
-    klient
-        .execute(CancelAllUnfreezeV2ContractRow::DOCS)
-        .await
-        .unwrap();
+    client
+        .query(AccountCreateContractRow::DOCS)
+        .execute()
+        .await?;
+    client.query(TransferContractRow::DOCS).execute().await?;
+    client
+        .query(TransferAssetContractRow::DOCS)
+        .execute()
+        .await?;
+    client.query(VoteAssetContractRow::DOCS).execute().await?;
+    client.query(VoteWitnessContractRow::DOCS).execute().await?;
+    client
+        .query(WitnessCreateContractRow::DOCS)
+        .execute()
+        .await?;
+    client.query(AssetIssueContractRow::DOCS).execute().await?;
+    client
+        .query(WitnessUpdateContractRow::DOCS)
+        .execute()
+        .await?;
+    client
+        .query(ParticipateAssetIssueContractRow::DOCS)
+        .execute()
+        .await?;
+    client
+        .query(AccountUpdateContractRow::DOCS)
+        .execute()
+        .await?;
+    client
+        .query(FreezeBalanceContractRow::DOCS)
+        .execute()
+        .await?;
+    client
+        .query(UnfreezeBalanceContractRow::DOCS)
+        .execute()
+        .await?;
+    client
+        .query(WithdrawBalanceContractRow::DOCS)
+        .execute()
+        .await?;
+    client
+        .query(UnfreezeAssetContractRow::DOCS)
+        .execute()
+        .await?;
+    client.query(UpdateAssetContractRow::DOCS).execute().await?;
+    client
+        .query(ProposalCreateContractRow::DOCS)
+        .execute()
+        .await?;
+    client
+        .query(ProposalApproveContractRow::DOCS)
+        .execute()
+        .await?;
+    client
+        .query(ProposalDeleteContractRow::DOCS)
+        .execute()
+        .await?;
+    client
+        .query(SetAccountIdContractRow::DOCS)
+        .execute()
+        .await?;
+    client.query(CreateSmartContractRow::DOCS).execute().await?;
+    client
+        .query(TriggerSmartContractRow::DOCS)
+        .execute()
+        .await?;
+    client
+        .query(UpdateSettingContractRow::DOCS)
+        .execute()
+        .await?;
+    client
+        .query(ExchangeCreateContractRow::DOCS)
+        .execute()
+        .await?;
+    client
+        .query(ExchangeInjectContractRow::DOCS)
+        .execute()
+        .await?;
+    client
+        .query(ExchangeWithdrawContractRow::DOCS)
+        .execute()
+        .await?;
+    client
+        .query(ExchangeTransactionContractRow::DOCS)
+        .execute()
+        .await?;
+    client
+        .query(UpdateEnergyLimitContractRow::DOCS)
+        .execute()
+        .await?;
+    client
+        .query(AccountPermissionUpdateContractRow::DOCS)
+        .execute()
+        .await?;
+    client.query(ClearAbiContractRow::DOCS).execute().await?;
+    client
+        .query(UpdateBrokerageContractRow::DOCS)
+        .execute()
+        .await?;
+    client
+        .query(ShieldedTransferContractRow::DOCS)
+        .execute()
+        .await?;
+    client
+        .query(MarketSellAssetContractRow::DOCS)
+        .execute()
+        .await?;
+    client
+        .query(MarketCancelOrderContractRow::DOCS)
+        .execute()
+        .await?;
+    client
+        .query(FreezeBalanceV2ContractRow::DOCS)
+        .execute()
+        .await?;
+    client
+        .query(UnfreezeBalanceV2ContractRow::DOCS)
+        .execute()
+        .await?;
+    client
+        .query(WithdrawExpireUnfreezeContractRow::DOCS)
+        .execute()
+        .await?;
+    client
+        .query(DelegateResourceContractRow::DOCS)
+        .execute()
+        .await?;
+    client
+        .query(UndelegateResourceContractRow::DOCS)
+        .execute()
+        .await?;
+    client
+        .query(CancelAllUnfreezeV2ContractRow::DOCS)
+        .execute()
+        .await?;
 
-    let mut client = tron_grpc::wallet_client::WalletClient::connect(provider).await?;
+    let mut grpc_client = tron_grpc::wallet_client::WalletClient::connect(provider).await?;
 
-    let now = client.get_now_block2(EmptyMessage {}).await?;
+    let now = grpc_client.get_now_block2(EmptyMessage {}).await?;
     let to = now
         .into_inner()
         .block_header
@@ -229,7 +214,7 @@ pub(crate) async fn init(
 
     let mut block_row_list = Vec::with_capacity((batch + 1_u64) as usize);
     let mut transaction_row_list = Vec::new();
-    let mut log_row_list = Vec::new();
+    let mut event_row_list = Vec::new();
     let mut internal_row_list = Vec::new();
 
     // all native contracts from
@@ -321,13 +306,13 @@ pub(crate) async fn init(
     let from = from as i64;
     let batch = batch as i64;
 
-    let mut client_clone = client.clone();
+    let mut grpc_client_clone = grpc_client.clone();
 
     for num in from..=to {
         // let cli = client.get_jsonrpc_client();
         let (block, tx_infos) = tokio::try_join!(
-            client.get_block_by_num2(NumberMessage { num }),
-            client_clone.get_transaction_info_by_block_num(NumberMessage { num })
+            grpc_client.get_block_by_num2(NumberMessage { num }),
+            grpc_client_clone.get_transaction_info_by_block_num(NumberMessage { num })
         )
         .unwrap();
         let block = block.into_inner();
@@ -337,9 +322,11 @@ pub(crate) async fn init(
         block_row_list.push(block_row);
 
         for (index, transaction) in block.transactions.iter().enumerate() {
+            let transaction_hash = utils::bytes_to_tron_format(&transaction.txid, false);
+
+            // handle genesis
             let transaction_row = if num == 0 {
                 TransactionRow::from_grpc(&block, index as i64, transaction, None)
-            // handle genesis
             } else {
                 assert!(tx_infos[index].id == transaction.txid);
                 let transaction_row = TransactionRow::from_grpc(
@@ -348,17 +335,16 @@ pub(crate) async fn init(
                     transaction,
                     Some(&tx_infos[index]),
                 );
-
                 for (index, log) in tx_infos[index].log.iter().enumerate() {
                     let log_row =
-                        LogRow::from_grpc(num, transaction_row.hash.to_vec(), index as i32, log);
-                    log_row_list.push(log_row);
+                        LogRow::from_grpc(num, transaction_hash.clone(), index as i32, log);
+                    event_row_list.push(log_row);
                 }
 
                 for (index, internal) in tx_infos[index].internal_transactions.iter().enumerate() {
                     let internal_row = InternalTransactionRow::from_grpc(
                         num,
-                        transaction_row.hash.to_vec(),
+                        transaction_hash.clone(),
                         index as i32,
                         internal,
                     );
@@ -388,7 +374,7 @@ pub(crate) async fn init(
                 parameter_parsed = true;
                 let row = AccountCreateContractRow::from_grpc(
                     num,
-                    transaction.txid.clone(),
+                    transaction_hash.clone(),
                     index.try_into().unwrap(),
                     0,
                     &msg,
@@ -399,7 +385,7 @@ pub(crate) async fn init(
                 parameter_parsed = true;
                 let row = TransferContractRow::from_grpc(
                     num,
-                    transaction.txid.clone(),
+                    transaction_hash.clone(),
                     index.try_into().unwrap(),
                     0,
                     &msg,
@@ -410,7 +396,7 @@ pub(crate) async fn init(
                 parameter_parsed = true;
                 let row = TransferAssetContractRow::from_grpc(
                     num,
-                    transaction.txid.clone(),
+                    transaction_hash.clone(),
                     index.try_into().unwrap(),
                     0,
                     &msg,
@@ -421,7 +407,7 @@ pub(crate) async fn init(
                 parameter_parsed = true;
                 let row = VoteAssetContractRow::from_grpc(
                     num,
-                    transaction.txid.clone(),
+                    transaction_hash.clone(),
                     index.try_into().unwrap(),
                     0,
                     &msg,
@@ -432,7 +418,7 @@ pub(crate) async fn init(
                 parameter_parsed = true;
                 let row = VoteWitnessContractRow::from_grpc(
                     num,
-                    transaction.txid.clone(),
+                    transaction_hash.clone(),
                     index.try_into().unwrap(),
                     0,
                     &msg,
@@ -443,7 +429,7 @@ pub(crate) async fn init(
                 parameter_parsed = true;
                 let row = WitnessCreateContractRow::from_grpc(
                     num,
-                    transaction.txid.clone(),
+                    transaction_hash.clone(),
                     index.try_into().unwrap(),
                     0,
                     &msg,
@@ -454,7 +440,7 @@ pub(crate) async fn init(
                 parameter_parsed = true;
                 let row = AssetIssueContractRow::from_grpc(
                     num,
-                    transaction.txid.clone(),
+                    transaction_hash.clone(),
                     index.try_into().unwrap(),
                     0,
                     &msg,
@@ -465,7 +451,7 @@ pub(crate) async fn init(
                 parameter_parsed = true;
                 let row = WitnessUpdateContractRow::from_grpc(
                     num,
-                    transaction.txid.clone(),
+                    transaction_hash.clone(),
                     index.try_into().unwrap(),
                     0,
                     &msg,
@@ -476,7 +462,7 @@ pub(crate) async fn init(
                 parameter_parsed = true;
                 let row = ParticipateAssetIssueContractRow::from_grpc(
                     num,
-                    transaction.txid.clone(),
+                    transaction_hash.clone(),
                     index.try_into().unwrap(),
                     0,
                     &msg,
@@ -487,7 +473,7 @@ pub(crate) async fn init(
                 parameter_parsed = true;
                 let row = AccountUpdateContractRow::from_grpc(
                     num,
-                    transaction.txid.clone(),
+                    transaction_hash.clone(),
                     index.try_into().unwrap(),
                     0,
                     &msg,
@@ -498,7 +484,7 @@ pub(crate) async fn init(
                 parameter_parsed = true;
                 let row = FreezeBalanceContractRow::from_grpc(
                     num,
-                    transaction.txid.clone(),
+                    transaction_hash.clone(),
                     index.try_into().unwrap(),
                     0,
                     &msg,
@@ -509,7 +495,7 @@ pub(crate) async fn init(
                 parameter_parsed = true;
                 let row = UnfreezeBalanceContractRow::from_grpc(
                     num,
-                    transaction.txid.clone(),
+                    transaction_hash.clone(),
                     index.try_into().unwrap(),
                     0,
                     &msg,
@@ -520,7 +506,7 @@ pub(crate) async fn init(
                 parameter_parsed = true;
                 let row = WithdrawBalanceContractRow::from_grpc(
                     num,
-                    transaction.txid.clone(),
+                    transaction_hash.clone(),
                     index.try_into().unwrap(),
                     0,
                     &msg,
@@ -531,7 +517,7 @@ pub(crate) async fn init(
                 parameter_parsed = true;
                 let row = UnfreezeAssetContractRow::from_grpc(
                     num,
-                    transaction.txid.clone(),
+                    transaction_hash.clone(),
                     index.try_into().unwrap(),
                     0,
                     &msg,
@@ -542,7 +528,7 @@ pub(crate) async fn init(
                 parameter_parsed = true;
                 let row = UpdateAssetContractRow::from_grpc(
                     num,
-                    transaction.txid.clone(),
+                    transaction_hash.clone(),
                     index.try_into().unwrap(),
                     0,
                     &msg,
@@ -553,7 +539,7 @@ pub(crate) async fn init(
                 parameter_parsed = true;
                 let row = ProposalCreateContractRow::from_grpc(
                     num,
-                    transaction.txid.clone(),
+                    transaction_hash.clone(),
                     index.try_into().unwrap(),
                     0,
                     &msg,
@@ -564,7 +550,7 @@ pub(crate) async fn init(
                 parameter_parsed = true;
                 let row = ProposalApproveContractRow::from_grpc(
                     num,
-                    transaction.txid.clone(),
+                    transaction_hash.clone(),
                     index.try_into().unwrap(),
                     0,
                     &msg,
@@ -575,7 +561,7 @@ pub(crate) async fn init(
                 parameter_parsed = true;
                 let row = ProposalDeleteContractRow::from_grpc(
                     num,
-                    transaction.txid.clone(),
+                    transaction_hash.clone(),
                     index.try_into().unwrap(),
                     0,
                     &msg,
@@ -586,7 +572,7 @@ pub(crate) async fn init(
                 parameter_parsed = true;
                 let row = SetAccountIdContractRow::from_grpc(
                     num,
-                    transaction.txid.clone(),
+                    transaction_hash.clone(),
                     index.try_into().unwrap(),
                     0,
                     &msg,
@@ -597,7 +583,7 @@ pub(crate) async fn init(
                 parameter_parsed = true;
                 let row = CreateSmartContractRow::from_grpc(
                     num,
-                    transaction.txid.clone(),
+                    transaction_hash.clone(),
                     index.try_into().unwrap(),
                     0,
                     &msg,
@@ -608,7 +594,7 @@ pub(crate) async fn init(
                 parameter_parsed = true;
                 let row = TriggerSmartContractRow::from_grpc(
                     num,
-                    transaction.txid.clone(),
+                    transaction_hash.clone(),
                     index.try_into().unwrap(),
                     0,
                     &msg,
@@ -619,7 +605,7 @@ pub(crate) async fn init(
                 parameter_parsed = true;
                 let row = UpdateSettingContractRow::from_grpc(
                     num,
-                    transaction.txid.clone(),
+                    transaction_hash.clone(),
                     index.try_into().unwrap(),
                     0,
                     &msg,
@@ -630,7 +616,7 @@ pub(crate) async fn init(
                 parameter_parsed = true;
                 let row = ExchangeCreateContractRow::from_grpc(
                     num,
-                    transaction.txid.clone(),
+                    transaction_hash.clone(),
                     index.try_into().unwrap(),
                     0,
                     &msg,
@@ -641,7 +627,7 @@ pub(crate) async fn init(
                 parameter_parsed = true;
                 let row = ExchangeInjectContractRow::from_grpc(
                     num,
-                    transaction.txid.clone(),
+                    transaction_hash.clone(),
                     index.try_into().unwrap(),
                     0,
                     &msg,
@@ -652,7 +638,7 @@ pub(crate) async fn init(
                 parameter_parsed = true;
                 let row = ExchangeWithdrawContractRow::from_grpc(
                     num,
-                    transaction.txid.clone(),
+                    transaction_hash.clone(),
                     index.try_into().unwrap(),
                     0,
                     &msg,
@@ -663,7 +649,7 @@ pub(crate) async fn init(
                 parameter_parsed = true;
                 let row = ExchangeTransactionContractRow::from_grpc(
                     num,
-                    transaction.txid.clone(),
+                    transaction_hash.clone(),
                     index.try_into().unwrap(),
                     0,
                     &msg,
@@ -674,7 +660,7 @@ pub(crate) async fn init(
                 parameter_parsed = true;
                 let row = UpdateEnergyLimitContractRow::from_grpc(
                     num,
-                    transaction.txid.clone(),
+                    transaction_hash.clone(),
                     index.try_into().unwrap(),
                     0,
                     &msg,
@@ -685,7 +671,7 @@ pub(crate) async fn init(
                 parameter_parsed = true;
                 let row = AccountPermissionUpdateContractRow::from_grpc(
                     num,
-                    transaction.txid.clone(),
+                    transaction_hash.clone(),
                     index.try_into().unwrap(),
                     0,
                     &msg,
@@ -696,7 +682,7 @@ pub(crate) async fn init(
                 parameter_parsed = true;
                 let row = ClearAbiContractRow::from_grpc(
                     num,
-                    transaction.txid.clone(),
+                    transaction_hash.clone(),
                     index.try_into().unwrap(),
                     0,
                     &msg,
@@ -707,7 +693,7 @@ pub(crate) async fn init(
                 parameter_parsed = true;
                 let row = UpdateBrokerageContractRow::from_grpc(
                     num,
-                    transaction.txid.clone(),
+                    transaction_hash.clone(),
                     index.try_into().unwrap(),
                     0,
                     &msg,
@@ -718,7 +704,7 @@ pub(crate) async fn init(
                 parameter_parsed = true;
                 let row = ShieldedTransferContractRow::from_grpc(
                     num,
-                    transaction.txid.clone(),
+                    transaction_hash.clone(),
                     index.try_into().unwrap(),
                     0,
                     &msg,
@@ -729,7 +715,7 @@ pub(crate) async fn init(
                 parameter_parsed = true;
                 let row = MarketSellAssetContractRow::from_grpc(
                     num,
-                    transaction.txid.clone(),
+                    transaction_hash.clone(),
                     index.try_into().unwrap(),
                     0,
                     &msg,
@@ -740,7 +726,7 @@ pub(crate) async fn init(
                 parameter_parsed = true;
                 let row = MarketCancelOrderContractRow::from_grpc(
                     num,
-                    transaction.txid.clone(),
+                    transaction_hash.clone(),
                     index.try_into().unwrap(),
                     0,
                     &msg,
@@ -751,7 +737,7 @@ pub(crate) async fn init(
                 parameter_parsed = true;
                 let row = FreezeBalanceV2ContractRow::from_grpc(
                     num,
-                    transaction.txid.clone(),
+                    transaction_hash.clone(),
                     index.try_into().unwrap(),
                     0,
                     &msg,
@@ -762,7 +748,7 @@ pub(crate) async fn init(
                 parameter_parsed = true;
                 let row = UnfreezeBalanceV2ContractRow::from_grpc(
                     num,
-                    transaction.txid.clone(),
+                    transaction_hash.clone(),
                     index.try_into().unwrap(),
                     0,
                     &msg,
@@ -773,7 +759,7 @@ pub(crate) async fn init(
                 parameter_parsed = true;
                 let row = WithdrawExpireUnfreezeContractRow::from_grpc(
                     num,
-                    transaction.txid.clone(),
+                    transaction_hash.clone(),
                     index.try_into().unwrap(),
                     0,
                     &msg,
@@ -784,7 +770,7 @@ pub(crate) async fn init(
                 parameter_parsed = true;
                 let row = DelegateResourceContractRow::from_grpc(
                     num,
-                    transaction.txid.clone(),
+                    transaction_hash.clone(),
                     index.try_into().unwrap(),
                     0,
                     &msg,
@@ -795,7 +781,7 @@ pub(crate) async fn init(
                 parameter_parsed = true;
                 let row = UndelegateResourceContractRow::from_grpc(
                     num,
-                    transaction.txid.clone(),
+                    transaction_hash.clone(),
                     index.try_into().unwrap(),
                     0,
                     &msg,
@@ -806,7 +792,7 @@ pub(crate) async fn init(
                 parameter_parsed = true;
                 let row = CancelAllUnfreezeV2ContractRow::from_grpc(
                     num,
-                    transaction.txid.clone(),
+                    transaction_hash.clone(),
                     index.try_into().unwrap(),
                     0,
                     &msg,
@@ -816,196 +802,374 @@ pub(crate) async fn init(
 
             //TODO: add CustomContract and GetContract (useless)
             if !parameter_parsed {
-                warn!("unknown contract type: {:?} {:X?}", parameter.type_url, transaction.txid);
+                warn!(
+                    "unknown contract type: {:?} {:X?}",
+                    parameter.type_url, transaction.txid
+                );
             }
 
             transaction_row_list.push(transaction_row);
         }
 
-        if (num - from + 1) % batch == 0 {
-            tokio::try_join!(
-                klient.insert_native_block(
-                    "INSERT INTO blocks FORMAT native",
-                    block_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO transactions FORMAT native",
-                    transaction_row_list.to_vec()
-                ),
-                klient
-                    .insert_native_block("INSERT INTO events FORMAT native", log_row_list.to_vec()),
-                klient.insert_native_block(
-                    "INSERT INTO internals FORMAT native",
-                    internal_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO accountCreateContracts FORMAT native",
-                    account_create_contract_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO transferContracts FORMAT native",
-                    transfer_contract_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO transferAssetContracts FORMAT native",
-                    transfer_asset_contract_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO voteAssetContracts FORMAT native",
-                    vote_asset_contract_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO voteWitnessContracts FORMAT native",
-                    vote_witness_contract_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO witnessCreateContracts FORMAT native",
-                    witness_create_contract_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO assetIssueContracts FORMAT native",
-                    asset_issue_contract_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO witnessUpdateContracts FORMAT native",
-                    witness_update_contract_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO participateAssetIssueContracts FORMAT native",
-                    participate_asset_issue_contract_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO accountUpdateContracts FORMAT native",
-                    account_update_contract_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO freezeBalanceContracts FORMAT native",
-                    freeze_balance_contract_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO unfreezeBalanceContracts FORMAT native",
-                    unfreeze_balance_contract_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO withdrawBalanceContracts FORMAT native",
-                    withdraw_balance_contract_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO unfreezeAssetContracts FORMAT native",
-                    unfreeze_asset_contract_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO updateAssetContracts FORMAT native",
-                    update_asset_contract_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO proposalCreateContracts FORMAT native",
-                    proposal_create_contract_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO proposalApproveContracts FORMAT native",
-                    proposal_approve_contract_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO proposalDeleteContracts FORMAT native",
-                    proposal_delete_contract_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO setAccountIdContracts FORMAT native",
-                    set_account_id_contract_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO createSmartContracts FORMAT native",
-                    create_smart_contract_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO triggerSmartContracts FORMAT native",
-                    trigger_smart_contract_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO updateSettingContracts FORMAT native",
-                    update_setting_contract_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO exchangeCreateContracts FORMAT native",
-                    exchange_create_contract_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO exchangeInjectContracts FORMAT native",
-                    exchange_inject_contract_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO exchangeWithdrawContracts FORMAT native",
-                    exchange_withdraw_contract_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO exchangeTransactionContracts FORMAT native",
-                    exchange_transaction_contract_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO updateEnergyLimitContracts FORMAT native",
-                    update_energy_limit_contract_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO accountPermissionUpdateContracts FORMAT native",
-                    account_permission_update_contract_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO clearAbiContracts FORMAT native",
-                    clear_abi_contract_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO updateBrokerageContracts FORMAT native",
-                    update_brokerage_contract_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO shieldedTransferContracts FORMAT native",
-                    shielded_transfer_contract_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO marketSellAssetContracts FORMAT native",
-                    market_sell_asset_contract_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO marketCancelOrderContracts FORMAT native",
-                    market_cancel_order_contract_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO freezeBalanceV2Contracts FORMAT native",
-                    freeze_balance_v2_contract_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO unfreezeBalanceV2Contracts FORMAT native",
-                    unfreeze_balance_v2_contract_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO withdrawExpireUnfreezeContracts FORMAT native",
-                    withdraw_expire_unfreeze_contract_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO delegateResourceContracts FORMAT native",
-                    delegate_resource_contract_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO undelegateResourceContracts FORMAT native",
-                    undelegate_resource_contract_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO cancelAllUnfreezeV2Contracts FORMAT native",
-                    cancel_all_unfreeze_v2_contract_row_list.to_vec()
-                )
-            )
-            .unwrap();
+        if (num - from + 1) % batch == 0 || num == to {
+            // Insert operations in the same order as list declarations
+            if !transaction_row_list.is_empty() {
+                let mut inserter = client.insert("transactions")?;
+                for row in &transaction_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
 
+            if !event_row_list.is_empty() {
+                let mut inserter = client.insert("events")?;
+                for row in &event_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
+
+            if !internal_row_list.is_empty() {
+                let mut inserter = client.insert("internal_transactions")?;
+                for row in &internal_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
+
+            if !account_create_contract_row_list.is_empty() {
+                let mut inserter = client.insert("accountCreateContracts")?;
+                for row in &account_create_contract_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
+
+            if !transfer_contract_row_list.is_empty() {
+                let mut inserter = client.insert("transferContracts")?;
+                for row in &transfer_contract_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
+
+            if !transfer_asset_contract_row_list.is_empty() {
+                let mut inserter = client.insert("transferAssetContracts")?;
+                for row in &transfer_asset_contract_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
+
+            if !vote_asset_contract_row_list.is_empty() {
+                let mut inserter = client.insert("voteAssetContracts")?;
+                for row in &vote_asset_contract_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
+
+            if !vote_witness_contract_row_list.is_empty() {
+                let mut inserter = client.insert("voteWitnessContracts")?;
+                for row in &vote_witness_contract_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
+
+            if !witness_create_contract_row_list.is_empty() {
+                let mut inserter = client.insert("witnessCreateContracts")?;
+                for row in &witness_create_contract_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
+
+            if !asset_issue_contract_row_list.is_empty() {
+                let mut inserter = client.insert("assetIssueContracts")?;
+                for row in &asset_issue_contract_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
+
+            if !witness_update_contract_row_list.is_empty() {
+                let mut inserter = client.insert("witnessUpdateContracts")?;
+                for row in &witness_update_contract_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
+
+            if !participate_asset_issue_contract_row_list.is_empty() {
+                let mut inserter = client.insert("participateAssetIssueContracts")?;
+                for row in &participate_asset_issue_contract_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
+
+            if !account_update_contract_row_list.is_empty() {
+                let mut inserter = client.insert("accountUpdateContracts")?;
+                for row in &account_update_contract_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
+
+            if !freeze_balance_contract_row_list.is_empty() {
+                let mut inserter = client.insert("freezeBalanceContracts")?;
+                for row in &freeze_balance_contract_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
+
+            if !unfreeze_balance_contract_row_list.is_empty() {
+                let mut inserter = client.insert("unfreezeBalanceContracts")?;
+                for row in &unfreeze_balance_contract_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
+
+            if !withdraw_balance_contract_row_list.is_empty() {
+                let mut inserter = client.insert("withdrawBalanceContracts")?;
+                for row in &withdraw_balance_contract_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
+
+            if !unfreeze_asset_contract_row_list.is_empty() {
+                let mut inserter = client.insert("unfreezeAssetContracts")?;
+                for row in &unfreeze_asset_contract_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
+
+            if !update_asset_contract_row_list.is_empty() {
+                let mut inserter = client.insert("updateAssetContracts")?;
+                for row in &update_asset_contract_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
+
+            if !proposal_create_contract_row_list.is_empty() {
+                let mut inserter = client.insert("proposalCreateContracts")?;
+                for row in &proposal_create_contract_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
+
+            if !proposal_approve_contract_row_list.is_empty() {
+                let mut inserter = client.insert("proposalApproveContracts")?;
+                for row in &proposal_approve_contract_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
+
+            if !proposal_delete_contract_row_list.is_empty() {
+                let mut inserter = client.insert("proposalDeleteContracts")?;
+                for row in &proposal_delete_contract_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
+
+            if !set_account_id_contract_row_list.is_empty() {
+                let mut inserter = client.insert("setAccountIdContracts")?;
+                for row in &set_account_id_contract_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
+
+            if !create_smart_contract_row_list.is_empty() {
+                let mut inserter = client.insert("createSmartContracts")?;
+                for row in &create_smart_contract_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
+
+            if !trigger_smart_contract_row_list.is_empty() {
+                let mut inserter = client.insert("triggerSmartContracts")?;
+                for row in &trigger_smart_contract_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
+
+            if !update_setting_contract_row_list.is_empty() {
+                let mut inserter = client.insert("updateSettingContracts")?;
+                for row in &update_setting_contract_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
+
+            if !exchange_create_contract_row_list.is_empty() {
+                let mut inserter = client.insert("exchangeCreateContracts")?;
+                for row in &exchange_create_contract_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
+
+            if !exchange_inject_contract_row_list.is_empty() {
+                let mut inserter = client.insert("exchangeInjectContracts")?;
+                for row in &exchange_inject_contract_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
+
+            if !exchange_withdraw_contract_row_list.is_empty() {
+                let mut inserter = client.insert("exchangeWithdrawContracts")?;
+                for row in &exchange_withdraw_contract_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
+
+            if !exchange_transaction_contract_row_list.is_empty() {
+                let mut inserter = client.insert("exchangeTransactionContracts")?;
+                for row in &exchange_transaction_contract_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
+
+            if !update_energy_limit_contract_row_list.is_empty() {
+                let mut inserter = client.insert("updateEnergyLimitContracts")?;
+                for row in &update_energy_limit_contract_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
+
+            if !account_permission_update_contract_row_list.is_empty() {
+                let mut inserter = client.insert("accountPermissionUpdateContracts")?;
+                for row in &account_permission_update_contract_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
+
+            if !clear_abi_contract_row_list.is_empty() {
+                let mut inserter = client.insert("clearAbiContracts")?;
+                for row in &clear_abi_contract_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
+
+            if !update_brokerage_contract_row_list.is_empty() {
+                let mut inserter = client.insert("updateBrokerageContracts")?;
+                for row in &update_brokerage_contract_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
+
+            if !shielded_transfer_contract_row_list.is_empty() {
+                let mut inserter = client.insert("shieldedTransferContracts")?;
+                for row in &shielded_transfer_contract_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
+
+            if !market_sell_asset_contract_row_list.is_empty() {
+                let mut inserter = client.insert("marketSellAssetContracts")?;
+                for row in &market_sell_asset_contract_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
+
+            if !market_cancel_order_contract_row_list.is_empty() {
+                let mut inserter = client.insert("marketCancelOrderContracts")?;
+                for row in &market_cancel_order_contract_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
+
+            if !freeze_balance_v2_contract_row_list.is_empty() {
+                let mut inserter = client.insert("freezeBalanceV2Contracts")?;
+                for row in &freeze_balance_v2_contract_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
+
+            if !unfreeze_balance_v2_contract_row_list.is_empty() {
+                let mut inserter = client.insert("unfreezeBalanceV2Contracts")?;
+                for row in &unfreeze_balance_v2_contract_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
+
+            if !withdraw_expire_unfreeze_contract_row_list.is_empty() {
+                let mut inserter = client.insert("withdrawExpireUnfreezeContracts")?;
+                for row in &withdraw_expire_unfreeze_contract_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
+
+            if !delegate_resource_contract_row_list.is_empty() {
+                let mut inserter = client.insert("delegateResourceContracts")?;
+                for row in &delegate_resource_contract_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
+
+            if !undelegate_resource_contract_row_list.is_empty() {
+                let mut inserter = client.insert("undelegateResourceContracts")?;
+                for row in &undelegate_resource_contract_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
+
+            if !cancel_all_unfreeze_v2_contract_row_list.is_empty() {
+                let mut inserter = client.insert("cancelAllUnfreezeV2Contracts")?;
+                for row in &cancel_all_unfreeze_v2_contract_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
+
+            // intently insert blocks at last
+            if !block_row_list.is_empty() {
+                let mut inserter = client.insert("blocks")?;
+                for row in &block_row_list {
+                    inserter.write(row).await?;
+                }
+                inserter.end().await?;
+            }
+
+            // Clear all lists in the same order as they were created
             block_row_list.clear();
             transaction_row_list.clear();
-            log_row_list.clear();
+            event_row_list.clear();
             internal_row_list.clear();
 
             account_create_contract_row_list.clear();
             transfer_contract_row_list.clear();
             transfer_asset_contract_row_list.clear();
+            vote_asset_contract_row_list.clear();
             vote_witness_contract_row_list.clear();
+            witness_create_contract_row_list.clear();
             asset_issue_contract_row_list.clear();
             witness_update_contract_row_list.clear();
             participate_asset_issue_contract_row_list.clear();
@@ -1015,6 +1179,10 @@ pub(crate) async fn init(
             withdraw_balance_contract_row_list.clear();
             unfreeze_asset_contract_row_list.clear();
             update_asset_contract_row_list.clear();
+            proposal_create_contract_row_list.clear();
+            proposal_approve_contract_row_list.clear();
+            proposal_delete_contract_row_list.clear();
+            set_account_id_contract_row_list.clear();
             create_smart_contract_row_list.clear();
             trigger_smart_contract_row_list.clear();
             update_setting_contract_row_list.clear();
@@ -1039,152 +1207,6 @@ pub(crate) async fn init(
             info!("{} done blocks & txs", num)
         }
     }
-
-    tokio::try_join!(
-        klient.insert_native_block("INSERT INTO blocks FORMAT native", block_row_list.to_vec()),
-        klient.insert_native_block(
-            "INSERT INTO transactions FORMAT native",
-            transaction_row_list.to_vec()
-        ),
-        klient.insert_native_block("INSERT INTO events FORMAT native", log_row_list.to_vec()),
-        klient.insert_native_block(
-            "INSERT INTO internals FORMAT native",
-            internal_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO accountCreateContracts FORMAT native",
-            account_create_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO transferContracts FORMAT native",
-            transfer_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO transferAssetContracts FORMAT native",
-            transfer_asset_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO voteWitnessContracts FORMAT native",
-            vote_witness_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO assetIssueContracts FORMAT native",
-            asset_issue_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO witnessUpdateContracts FORMAT native",
-            witness_update_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO participateAssetIssueContracts FORMAT native",
-            participate_asset_issue_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO accountUpdateContracts FORMAT native",
-            account_update_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO freezeBalanceContracts FORMAT native",
-            freeze_balance_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO unfreezeBalanceContracts FORMAT native",
-            unfreeze_balance_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO withdrawBalanceContracts FORMAT native",
-            withdraw_balance_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO unfreezeAssetContracts FORMAT native",
-            unfreeze_asset_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO updateAssetContracts FORMAT native",
-            update_asset_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO createSmartContracts FORMAT native",
-            create_smart_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO triggerSmartContracts FORMAT native",
-            trigger_smart_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO updateSettingContracts FORMAT native",
-            update_setting_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO exchangeCreateContracts FORMAT native",
-            exchange_create_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO exchangeInjectContracts FORMAT native",
-            exchange_inject_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO exchangeWithdrawContracts FORMAT native",
-            exchange_withdraw_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO exchangeTransactionContracts FORMAT native",
-            exchange_transaction_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO updateEnergyLimitContracts FORMAT native",
-            update_energy_limit_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO accountPermissionUpdateContracts FORMAT native",
-            account_permission_update_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO clearAbiContracts FORMAT native",
-            clear_abi_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO updateBrokerageContracts FORMAT native",
-            update_brokerage_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO shieldedTransferContracts FORMAT native",
-            shielded_transfer_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO marketSellAssetContracts FORMAT native",
-            market_sell_asset_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO marketCancelOrderContracts FORMAT native",
-            market_cancel_order_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO freezeBalanceV2Contracts FORMAT native",
-            freeze_balance_v2_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO unfreezeBalanceV2Contracts FORMAT native",
-            unfreeze_balance_v2_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO withdrawExpireUnfreezeContracts FORMAT native",
-            withdraw_expire_unfreeze_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO delegateResourceContracts FORMAT native",
-            delegate_resource_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO undelegateResourceContracts FORMAT native",
-            undelegate_resource_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO cancelAllUnfreezeV2Contracts FORMAT native",
-            cancel_all_unfreeze_v2_contract_row_list.to_vec()
-        )
-    )
-    .unwrap();
 
     Ok(())
 }

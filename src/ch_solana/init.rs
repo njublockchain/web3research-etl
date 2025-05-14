@@ -20,6 +20,14 @@ pub(crate) async fn init(
     from: u64,
     batch: u64,
 ) -> Result<(), Box<dyn Error>> {
+    // Create ClickHouse client
+    let parsed_db_url = Url::parse(&db).unwrap();
+    let database_name = parsed_db_url.path().strip_prefix('/').unwrap_or("default");
+    let clickhouse_client = clickhouse::Client::default()
+        .with_url(&db)
+        .with_database(database_name);
+
+    // Create Solana RPC client
     let client: RpcClient = RpcClient::new_with_commitment(provider, CommitmentConfig::confirmed());
     client.get_health().unwrap(); // require health
     let cluster_nodes = client.get_cluster_nodes().unwrap();

@@ -20,6 +20,58 @@ use crate::{
     ProviderType,
 };
 
+// Helper function to insert batch data into ClickHouse
+pub async fn insert_batch_data(
+    client: &clickhouse::Client,
+    block_rows: &[BlockRow],
+    transaction_rows: &[TransactionRow],
+    event_rows: &[EventRow],
+    withdraw_rows: &[WithdrawalRow],
+    trace_rows: &[TraceRow],
+) -> Result<(), Box<dyn Error>> {
+    if !transaction_rows.is_empty() {
+        let mut inserter = client.insert("transactions")?;
+        for row in transaction_rows {
+            inserter.write(row).await?;
+        }
+        inserter.end().await?;
+    }
+
+    if !event_rows.is_empty() {
+        let mut inserter = client.insert("events")?;
+        for row in event_rows {
+            inserter.write(row).await?;
+        }
+        inserter.end().await?;
+    }
+
+    if !withdraw_rows.is_empty() {
+        let mut inserter = client.insert("withdrawals")?;
+        for row in withdraw_rows {
+            inserter.write(row).await?;
+        }
+        inserter.end().await?;
+    }
+
+    if !trace_rows.is_empty() {
+        let mut inserter = client.insert("traces")?;
+        for row in trace_rows {
+            inserter.write(row).await?;
+        }
+        inserter.end().await?;
+    }
+
+    if !block_rows.is_empty() {
+        let mut inserter = client.insert("blocks")?;
+        for row in block_rows {
+            inserter.write(row).await?;
+        }
+        inserter.end().await?;
+    }
+
+    Ok(())
+}
+
 pub async fn get_block_details(
     provider: &EthProvider,
     trace_provider: &Option<EthProvider>,
@@ -106,35 +158,16 @@ pub(crate) async fn init(
     trace_provider_url: Option<String>,
     trace_provider_type: ProviderType,
     from: u64,
-    batch: u64,
+    batch_size: u64,
 ) -> Result<(), Box<dyn Error>> {
-    let clickhouse_url = Url::parse(&db).unwrap();
-    // warn!("db: {} path: {}", format!("{}:{}", clickhouse_url.host().unwrap(), clickhouse_url.port().unwrap()), clickhouse_url.path());
-
-    let options = if clickhouse_url.path() != "/default" || !clickhouse_url.username().is_empty() {
-        klickhouse::ClientOptions {
-            username: clickhouse_url.username().to_string(),
-            password: clickhouse_url.password().unwrap_or("").to_string(),
-            default_database: clickhouse_url
-                .path()
-                .to_string()
-                .strip_prefix('/')
-                .unwrap()
-                .to_string(),
-        }
-    } else {
-        klickhouse::ClientOptions::default()
-    };
-
-    let klient = klickhouse::Client::connect(
-        format!(
-            "{}:{}",
-            clickhouse_url.host().unwrap(),
-            clickhouse_url.port().unwrap()
-        ),
-        options.clone(),
-    )
-    .await?;
+    // Create connection to ClickHouse using the official library
+    let parsed_db_url = Url::parse(&db).unwrap();
+    let database = parsed_db_url.path()
+        .strip_prefix('/')
+        .unwrap_or("default");
+    let client = clickhouse::Client::default()
+        .with_url(&db)
+        .with_database(database);
 
     // Create provider directly based on URL type (WS or HTTP)
     let provider = create_provider(&provider_url).await?;
@@ -158,15 +191,20 @@ pub(crate) async fn init(
     };
 
     debug!("start initializing schema");
-    klient
-        .execute(format!("CREATE DATABASE IF NOT EXISTS {}", options.default_database).as_str())
-        .await
-        .unwrap();
-    klient.execute(BlockRow::DOCS).await.unwrap();
-    klient.execute(TransactionRow::DOCS).await.unwrap();
-    klient.execute(EventRow::DOCS).await.unwrap();
-    klient.execute(WithdrawalRow::DOCS).await.unwrap();
-    klient.execute(TraceRow::DOCS).await.unwrap();
+
+    // Create database if it doesn't exist
+    client
+        .query(&format!("CREATE DATABASE IF NOT EXISTS {}", database))
+        .execute()
+        .await?;
+
+    // Create tables using the SQL definitions from the code comments
+    client.query(BlockRow::DOCS).execute().await?;
+    client.query(TransactionRow::DOCS).execute().await?;
+    client.query(EventRow::DOCS).execute().await?;
+    client.query(WithdrawalRow::DOCS).execute().await?;
+    client.query(TraceRow::DOCS).execute().await?;
+
     debug!("schema initialized");
 
     let latest: u64 = provider.get_block_number().await?.as_u64();
@@ -178,11 +216,10 @@ pub(crate) async fn init(
         .map(jitter) // add jitter to delays
         .take(3); // limit to 3 retries
 
-    let mut block_row_list = Vec::with_capacity((batch + 1_u64) as usize);
+    let mut block_row_list = Vec::with_capacity((batch_size + 1_u64) as usize);
     let mut transaction_row_list = Vec::new();
     let mut event_row_list = Vec::new();
     let mut withdraw_row_list = Vec::new();
-
     let mut trace_row_list = Vec::new();
 
     for num in from..=to {
@@ -227,54 +264,34 @@ pub(crate) async fn init(
             }
         }
 
-        if (num - from + 1) % batch == 0 {
-            tokio::try_join!(
-                klient.insert_native_block(
-                    "INSERT INTO blocks FORMAT native",
-                    block_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO transactions FORMAT native",
-                    transaction_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO events FORMAT native",
-                    event_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO withdraws FORMAT native",
-                    withdraw_row_list.to_vec()
-                ),
-                klient.insert_native_block(
-                    "INSERT INTO traces FORMAT native",
-                    trace_row_list.to_vec()
+        if block_row_list.len() >= batch_size as usize || num == to {
+            if !block_row_list.is_empty() {
+                // Ensure there's data to insert
+                insert_batch_data(
+                    &client,
+                    &block_row_list,
+                    &transaction_row_list,
+                    &event_row_list,
+                    &withdraw_row_list,
+                    &trace_row_list,
                 )
-            )
-            .unwrap();
+                .await?;
 
-            block_row_list.clear();
-            transaction_row_list.clear();
-            event_row_list.clear();
-            withdraw_row_list.clear();
+                info!(
+                    "Inserted batch of {} blocks (up to number {})",
+                    block_row_list.len(),
+                    num
+                );
 
-            info!("{} done blocks & txs", num)
+                block_row_list.clear();
+                transaction_row_list.clear();
+                event_row_list.clear();
+                withdraw_row_list.clear();
+                trace_row_list.clear();
+            }
         }
-
-        tokio::try_join!(
-            klient.insert_native_block("INSERT INTO blocks FORMAT native", block_row_list.to_vec()),
-            klient.insert_native_block(
-                "INSERT INTO transactions FORMAT native",
-                transaction_row_list.to_vec()
-            ),
-            klient.insert_native_block("INSERT INTO events FORMAT native", event_row_list.to_vec()),
-            klient.insert_native_block(
-                "INSERT INTO withdraws FORMAT native",
-                withdraw_row_list.to_vec()
-            ),
-            klient.insert_native_block("INSERT INTO traces FORMAT native", trace_row_list.to_vec())
-        )
-        .unwrap();
     }
 
+    info!("ETH initialization complete!");
     Ok(())
 }

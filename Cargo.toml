@@ -14,14 +14,13 @@ num_cpus = "^1.16.0"
 env_logger = "^0.10.0"
 log = "^0.4.19"
 tokio-retry = "^0.3.0"
-klickhouse = "^0.11.0"
 serde_json = "^1.0.103"
 url = "^2.4.0"
 serde_variant = "^0.1.2"
 bitcoincore-rpc = "^0.17.0"
 bitcoin = "^0.30.1"
 tron-grpc = "^0.0.11"
-tonic = "^0.12.2"
+tonic = { version = "^0.12.2", features = ["transport"] }
 bs58 = { version = "^0.5.0", features = ["check"] }
 hex = "^0.4.3"
 documented = "^0.3.0"
@@ -32,6 +31,7 @@ solana-sdk = "^2.0.1"
 async-stream = "^0.3.5"
 tokio-stream = "^0.1.14"
 futures = "^0.3.28"
+clickhouse = { version = "0.13.2", features = ["test-util"] }
 
 [dependencies.ethers]
 version = "^2.0.14"
@@ -44,6 +44,9 @@ rev = "b500cdc2a920cd5bff9e2dd974d7b97349d61464"
 [patch.crates-io.curve25519-dalek]
 git = "https://github.com/solana-labs/curve25519-dalek.git"
 rev = "b500cdc2a920cd5bff9e2dd974d7b97349d61464"
+
+[build-dependencies]
+cargo-expand = "1.0.106"
 
 [dependencies.clap]
 version = "^4.3.10"

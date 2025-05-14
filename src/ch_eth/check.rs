@@ -1,4 +1,4 @@
-use klickhouse::{Client, ClientOptions, Row};
+use clickhouse::Row;
 use log::{debug, info};
 use std::error::Error;
 use url::Url;
@@ -15,24 +15,12 @@ pub(crate) async fn check(
     provider_type: ProviderType,
     from: u64,
 ) -> Result<(), Box<dyn Error>> {
-    let clickhouse_url = Url::parse(&db).unwrap();
-    // warn!("db: {} path: {}", format!("{}:{}", clickhouse_url.host().unwrap(), clickhouse_url.port().unwrap()), clickhouse_url.path());
-
-    let clickhouse_options =
-        if clickhouse_url.path() != "/default" || !clickhouse_url.username().is_empty() {
-            ClientOptions {
-                username: clickhouse_url.username().to_string(),
-                password: clickhouse_url.password().unwrap_or("").to_string(),
-                default_database: clickhouse_url
-                    .path()
-                    .to_string()
-                    .strip_prefix('/')
-                    .unwrap()
-                    .to_string(),
-            }
-        } else {
-            ClientOptions::default()
-        };
+    // Create a client with the given database
+    let parsed_url = Url::parse(&db).unwrap();
+    let database = parsed_url.path().strip_prefix('/').unwrap_or("default");
+    let client = clickhouse::Client::default()
+        .with_url(&db)
+        .with_database(database);
 
     debug!("start listening");
 
@@ -54,24 +42,15 @@ pub(crate) async fn check(
         None => None,
     };
 
-    let client = Client::connect(
-        format!(
-            "{}:{}",
-            clickhouse_url.host().unwrap(),
-            clickhouse_url.port().unwrap()
-        ),
-        clickhouse_options.clone(),
-    )
-    .await?;
-
-    #[derive(Row, Clone, Debug)]
+    #[derive(Row, Clone, Debug, serde::Deserialize)]
     struct MaxNumberRow {
         max: u64,
     }
 
     debug!("start interval update");
     let local_height = client
-        .query_one::<MaxNumberRow>("SELECT max(number) as max FROM blocks")
+        .query("SELECT max(number) as max FROM blocks")
+        .fetch_one::<MaxNumberRow>()
         .await?;
     info!("local height {}", local_height.max);
     let latest: u64 = provider.get_block_number().await?.as_u64();
@@ -79,14 +58,7 @@ pub(crate) async fn check(
     // let from = local_height.max + 1;
 
     for num in from..=latest {
-        health_check(
-            client.clone(),
-            &provider,
-            &trace_provider,
-            provider_type,
-            num,
-        )
-        .await;
+        health_check(&client, &provider, &trace_provider, provider_type, num).await?;
     }
 
     Ok(())

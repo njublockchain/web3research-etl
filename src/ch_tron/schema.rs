@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
+use clickhouse::Row;
 use documented::Documented;
 use itertools::MultiUnzip;
-use klickhouse::{Bytes, Row};
-use log::warn;
+use serde::{Deserialize, Serialize};
 use tron_grpc::{
     transaction_info::Log, AccountCreateContract, AccountPermissionUpdateContract,
     AccountUpdateContract, AssetIssueContract, BlockExtention, CancelAllUnfreezeV2Contract,
@@ -20,51 +20,9 @@ use tron_grpc::{
     WitnessCreateContract, WitnessUpdateContract,
 };
 
-pub fn len_20_addr_from_any_vec(any_addr: Vec<u8>) -> Bytes {
-    // consider a EVM address
-    if any_addr.len() == 32 {
-        assert!(
-            any_addr.starts_with(&[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
-            "32-length EVM address should start with 12*00: {:X?}",
-            any_addr
-        ); // 12 bytes prefix + 20 bytes addr
-        return Bytes(any_addr[12..].to_vec());
-    }
+use crate::ch_tron::utils;
 
-    // consider a TRON address
-    if any_addr.len() == 21 {
-        assert!(
-            any_addr.starts_with(&[0x41]),
-            "21-length TRON address should start with 41: {:X?}",
-            any_addr
-        );
-        return Bytes(any_addr[1..].to_vec());
-    }
-
-    // consider a ETH address
-    if any_addr.len() == 20 {
-        return Bytes(any_addr);
-    }
-
-    // remove the T prefix
-    if any_addr.starts_with(&[0x41]) && any_addr.len() == 21 {
-        let cut_addr = any_addr[1..].to_vec();
-        return Bytes(cut_addr);
-    }
-
-    // if null
-    if any_addr.is_empty() {
-        return Bytes::default();
-    }
-
-    // fallback
-    warn!(
-        "Address length {} is not considered yet! {:X?}",
-        any_addr.len(),
-        any_addr
-    );
-    return Bytes(any_addr);
-}
+use super::utils::format_tron_address;
 
 /** CREATE TABLE IF NOT EXISTS blocks
 (
@@ -82,19 +40,24 @@ pub fn len_20_addr_from_any_vec(any_addr: Vec<u8>) -> Bytes {
 ) ENGINE = ReplacingMergeTree
 ORDER BY (number, timestamp, hash)
 SETTINGS index_granularity = 8192; */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct BlockRow {
-    pub hash: Bytes,
+    pub hash: String,
     pub timestamp: i64,
-    pub tx_trie_root: Bytes,
-    pub parent_hash: Bytes,
+    #[serde(rename = "txTrieRoot")]
+    pub tx_trie_root: String,
+    #[serde(rename = "parentHash")]
+    pub parent_hash: String,
     pub number: i64,
+    #[serde(rename = "witnessId")]
     pub witness_id: i64,
-    pub witness_address: Bytes,
+    #[serde(rename = "witnessAddress")]
+    pub witness_address: String,
     pub version: i32,
-    pub account_state_root: Bytes,
-    pub witness_signature: Bytes,
+    #[serde(rename = "accountStateRoot")]
+    pub account_state_root: String,
+    #[serde(rename = "witnessSignature")]
+    pub witness_signature: String,
 }
 
 impl BlockRow {
@@ -103,20 +66,20 @@ impl BlockRow {
         let header_raw_data = header.raw_data.unwrap();
 
         Self {
-            hash: Bytes(block.blockid.clone()),
+            hash: hex::encode(&block.blockid),
             timestamp: header_raw_data.timestamp,
-            tx_trie_root: Bytes(header_raw_data.tx_trie_root),
-            parent_hash: Bytes(header_raw_data.parent_hash),
+            tx_trie_root: hex::encode(&header_raw_data.tx_trie_root),
+            parent_hash: hex::encode(&header_raw_data.parent_hash),
             number: header_raw_data.number,
             witness_id: header_raw_data.witness_id,
             witness_address: if header_raw_data.witness_address.starts_with(&[0x41]) {
-                Bytes(len_20_addr_from_any_vec(header_raw_data.witness_address).to_vec())
+                format_tron_address(header_raw_data.witness_address.clone())
             } else {
-                Bytes(header_raw_data.witness_address) // for the genesis phase
+                format_tron_address(header_raw_data.witness_address.clone()) // for the genesis phase
             },
             version: header_raw_data.version,
-            account_state_root: klickhouse::Bytes(header_raw_data.account_state_root),
-            witness_signature: klickhouse::Bytes(header.witness_signature),
+            account_state_root: hex::encode(&header_raw_data.account_state_root),
+            witness_signature: hex::encode(&header.witness_signature),
         }
     }
 }
@@ -175,68 +138,100 @@ impl BlockRow {
 ENGINE = ReplacingMergeTree
 ORDER BY (blockNum, contractType, contractAddress, exchangeId, orderId, result, hash)
 SETTINGS index_granularity = 8192, allow_nullable_key=1; */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct TransactionRow {
-    pub hash: Bytes,
+    pub hash: String,
+    #[serde(rename = "blockNum")]
     pub block_num: i64,
     pub index: i64,
 
     pub expiration: i64,
-    pub authority_account_names: Vec<Bytes>,
-    pub authority_account_addresses: Vec<Bytes>,
-    pub authority_permission_names: Vec<Bytes>,
-    pub data: Bytes,
+    #[serde(rename = "authorityAccountNames")]
+    pub authority_account_names: Vec<String>,
+    #[serde(rename = "authorityAccountAddresses")]
+    pub authority_account_addresses: Vec<String>,
+    #[serde(rename = "authorityPermissionNames")]
+    pub authority_permission_names: Vec<String>,
+    pub data: String,
 
+    #[serde(rename = "contractType")]
     pub contract_type: String,
-    pub contract_provider: Option<Bytes>,
-    pub contract_name: Option<Bytes>,
+    #[serde(rename = "contractProvider")]
+    pub contract_provider: Option<String>,
+    #[serde(rename = "contractName")]
+    pub contract_name: Option<String>,
+    #[serde(rename = "contractPermissionId")]
     pub contract_permission_id: Option<i32>,
 
-    pub scripts: Bytes,
+    pub scripts: String,
     pub timestamp: i64,
+    #[serde(rename = "feeLimit")]
     pub fee_limit: i64,
 
-    pub signature: Vec<Bytes>,
-    pub constant_result: Bytes,
+    pub signature: Vec<String>,
+    #[serde(rename = "constantResult")]
+    pub constant_result: String,
 
     pub fee: i64,
+    #[serde(rename = "blockTimeStamp")]
     pub block_time_stamp: i64,
-    pub contract_result: Option<Bytes>,
-    pub contract_address: Option<Bytes>,
+    #[serde(rename = "contractResult")]
+    pub contract_result: Option<String>,
+    #[serde(rename = "contractAddress")]
+    pub contract_address: Option<String>,
 
+    #[serde(rename = "energyUsage")]
     pub energy_usage: i64,
+    #[serde(rename = "energyFee")]
     pub energy_fee: i64,
+    #[serde(rename = "originEnergyUsage")]
     pub origin_energy_usage: i64,
+    #[serde(rename = "energyUsageTotal")]
     pub energy_usage_total: i64,
+    #[serde(rename = "netUsage")]
     pub net_usage: i64,
+    #[serde(rename = "netFee")]
     pub net_fee: i64,
+    #[serde(rename = "receiptResult")]
     pub receipt_result: String,
 
     pub result: String,
-    pub res_message: Bytes,
+    #[serde(rename = "resMessage")]
+    pub res_message: String,
 
+    #[serde(rename = "assetIssueId")]
     pub asset_issue_id: String,
+    #[serde(rename = "withdrawAmount")]
     pub withdraw_amount: i64,
+    #[serde(rename = "unfreezeAmount")]
     pub unfreeze_amount: i64,
+    #[serde(rename = "exchangeReceivedAmount")]
     pub exchange_received_amount: i64,
+    #[serde(rename = "exchangeInjectAnotherAmount")]
     pub exchange_inject_another_amount: i64,
+    #[serde(rename = "exchangeWithdrawAnotherAmount")]
     pub exchange_withdraw_another_amount: i64,
+    #[serde(rename = "exchangeId")]
     pub exchange_id: i64,
+    #[serde(rename = "shieldedTransactionFee")]
     pub shielded_transaction_fee: i64,
 
-    pub order_id: Bytes,
+    #[serde(rename = "orderId")]
+    pub order_id: String,
     // pub order_details: Vec<MarketOrderDetailField>,
-    #[klickhouse(rename = "orderDetails.makerOrderId")]
-    pub order_detail_maker_order_id: Vec<Bytes>,
-    #[klickhouse(rename = "orderDetails.takerOrderId")]
-    pub order_detail_taker_order_id: Vec<Bytes>,
-    #[klickhouse(rename = "orderDetails.fillSellQuantity")]
+    #[serde(rename = "orderDetails.makerOrderId")]
+    pub order_detail_maker_order_id: Vec<String>,
+    #[serde(rename = "orderDetails.takerOrderId")]
+    pub order_detail_taker_order_id: Vec<String>,
+    #[serde(rename = "orderDetails.fillSellQuantity")]
     pub order_detail_fill_sell_quantity: Vec<i64>,
-    #[klickhouse(rename = "orderDetails.fillBuyQuantity")]
+    #[serde(rename = "orderDetails.fillBuyQuantity")]
     pub order_detail_fill_buy_quantity: Vec<i64>,
+    #[serde(rename = "packingFee")]
     pub packing_fee: i64,
+    #[serde(rename = "withdrawExpireAmount")]
     pub withdraw_expire_amount: i64,
+    #[serde(rename = "cancelUnfreezeV2Amount")]
     pub cancel_unfreeze_v2_amount: HashMap<String, i64>,
 }
 
@@ -275,8 +270,8 @@ impl TransactionRow {
                 .iter()
                 .map(|order_detail| {
                     (
-                        Bytes(order_detail.maker_order_id.clone()),
-                        Bytes(order_detail.taker_order_id.clone()),
+                        hex::encode(&order_detail.maker_order_id),
+                        hex::encode(&order_detail.taker_order_id),
                         order_detail.fill_sell_quantity,
                         order_detail.fill_buy_quantity,
                     )
@@ -287,41 +282,45 @@ impl TransactionRow {
         };
 
         Self {
-            hash: Bytes(transaction.txid.clone()),
+            hash: hex::encode(&transaction.txid),
             block_num: header_raw_data.number,
             index,
             expiration: tx_raw_data.expiration,
             authority_account_names: tx_raw_data
                 .auths
                 .iter()
-                .map(|auth| auth.account.clone().unwrap().name.into())
+                .map(|auth| {
+                    String::from_utf8_lossy(&auth.account.clone().unwrap().name).to_string()
+                })
                 .collect(),
             authority_account_addresses: tx_raw_data
                 .auths
                 .iter()
-                .map(|auth| auth.account.clone().unwrap().address.into())
+                .map(|auth| format_tron_address(auth.account.clone().unwrap().address))
                 .collect(),
             authority_permission_names: tx_raw_data
                 .auths
                 .iter()
-                .map(|auth| auth.permission_name.clone().into())
+                .map(|auth| String::from_utf8_lossy(&auth.permission_name).to_string())
                 .collect(),
-            data: Bytes(tx_raw_data.data),
+            data: hex::encode(&tx_raw_data.data),
             contract_type: contract.map_or("".to_owned(), |contract| {
                 contract.r#type().as_str_name().to_owned()
             }),
-            contract_provider: contract.map(|contract| Bytes(contract.provider.clone())),
-            contract_name: contract.map(|contract| Bytes(contract.contract_name.clone())),
+            contract_provider: contract
+                .map(|contract| String::from_utf8_lossy(&contract.provider).to_string()),
+            contract_name: contract
+                .map(|contract| String::from_utf8_lossy(&contract.contract_name).to_string()),
             contract_permission_id: contract.map(|contract| contract.permission_id),
-            scripts: Bytes(tx_raw_data.scripts),
+            scripts: hex::encode(&tx_raw_data.scripts),
             timestamp: tx_raw_data.timestamp,
             fee_limit: tx_raw_data.fee_limit,
-            signature: tx.signature.iter().map(|sig| Bytes(sig.clone())).collect(),
+            signature: tx.signature.iter().map(|sig| hex::encode(sig)).collect(),
             constant_result: if transaction.constant_result.is_empty() {
-                Bytes::default()
+                String::new()
             } else {
                 assert!(transaction.constant_result.len() == 1);
-                Bytes(transaction.constant_result[0].clone())
+                hex::encode(&transaction.constant_result[0])
             }, // the return of contract call
 
             // result -> txInfo
@@ -329,10 +328,10 @@ impl TransactionRow {
             block_time_stamp: transaction_info
                 .map_or(0, |transaction_info| transaction_info.block_time_stamp),
             contract_result: transaction_info.map_or(None, |transaction_info| {
-                Some(Bytes(transaction_info.contract_result[0].clone()))
+                Some(hex::encode(&transaction_info.contract_result[0]))
             }),
             contract_address: transaction_info.map_or(None, |transaction_info| {
-                Some(len_20_addr_from_any_vec(
+                Some(format_tron_address(
                     transaction_info.contract_address.clone(),
                 ))
             }),
@@ -352,8 +351,8 @@ impl TransactionRow {
             result: transaction_info.map_or("".to_owned(), |transaction_info| {
                 transaction_info.result().as_str_name().to_owned()
             }),
-            res_message: transaction_info.map_or(Bytes::default(), |transaction_info| {
-                Bytes(transaction_info.res_message.clone())
+            res_message: transaction_info.map_or(String::new(), |transaction_info| {
+                hex::encode(&transaction_info.res_message)
             }),
             asset_issue_id: transaction_info.map_or("".to_owned(), |transaction_info| {
                 transaction_info.asset_issue_id.clone()
@@ -376,8 +375,8 @@ impl TransactionRow {
             shielded_transaction_fee: transaction_info.map_or(0, |transaction_info| {
                 transaction_info.shielded_transaction_fee
             }),
-            order_id: transaction_info.map_or(Bytes::default(), |transaction_info| {
-                Bytes(transaction_info.order_id.clone())
+            order_id: transaction_info.map_or(String::new(), |transaction_info| {
+                hex::encode(&transaction_info.order_id)
             }),
 
             order_detail_maker_order_id,
@@ -413,40 +412,38 @@ impl TransactionRow {
 ENGINE = ReplacingMergeTree
 ORDER BY (topic0, topic1, topic2, topic3, blockNum, transactionHash, logIndex)
 SETTINGS index_granularity = 8192, allow_nullable_key=1; */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct LogRow {
+    #[serde(rename = "blockNum")]
     pub block_num: i64,
-    pub transaction_hash: Bytes,
+    #[serde(rename = "transactionHash")]
+    pub transaction_hash: String,
+    #[serde(rename = "logIndex")]
     pub log_index: i32,
-    pub address: Bytes,
+    pub address: String,
 
-    pub topic0: Option<Bytes>,
-    pub topic1: Option<Bytes>,
-    pub topic2: Option<Bytes>,
-    pub topic3: Option<Bytes>,
+    pub topic0: Option<String>,
+    pub topic1: Option<String>,
+    pub topic2: Option<String>,
+    pub topic3: Option<String>,
 
-    pub data: Bytes,
+    pub data: String,
 }
 
 impl LogRow {
-    pub fn from_grpc(block_num: i64, transaction_hash: Vec<u8>, log_index: i32, log: &Log) -> Self {
-        let topics: Vec<Bytes> = log
-            .topics
-            .iter()
-            .map(|topic| topic.to_vec().into())
-            .collect();
+    pub fn from_grpc(block_num: i64, transaction_hash: String, log_index: i32, log: &Log) -> Self {
+        let topics: Vec<String> = log.topics.iter().map(|topic| hex::encode(topic)).collect();
 
         Self {
             block_num,
-            transaction_hash: Bytes(transaction_hash),
+            transaction_hash: hex::encode(&transaction_hash),
             log_index,
-            address: len_20_addr_from_any_vec(log.address.clone()),
+            address: format_tron_address(log.address.clone()),
             topic0: topics.get(0).cloned(),
             topic1: topics.get(1).cloned(),
             topic2: topics.get(2).cloned(),
             topic3: topics.get(3).cloned(),
-            data: Bytes(log.data.clone()),
+            data: hex::encode(&log.data),
         }
     }
 }
@@ -470,22 +467,26 @@ impl LogRow {
 ENGINE = ReplacingMergeTree
 ORDER BY (callerAddress, transferToAddress, blockNum, transactionHash, internalIndex)
 SETTINGS index_granularity = 8192; */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct InternalTransactionRow {
+    #[serde(rename = "blockNum")]
     pub block_num: i64,
-    pub transaction_hash: Bytes,
+    #[serde(rename = "transactionHash")]
+    pub transaction_hash: String,
+    #[serde(rename = "internalIndex")]
     pub internal_index: i32,
 
-    pub hash: Bytes,
-    pub caller_address: Bytes,
-    pub transfer_to_address: Bytes,
+    pub hash: String,
+    #[serde(rename = "callerAddress")]
+    pub caller_address: String,
+    #[serde(rename = "transferToAddress")]
+    pub transfer_to_address: String,
 
-    #[klickhouse(rename = "callValueInfos.tokenId")]
+    #[serde(rename = "callValueInfos.tokenId")]
     pub call_value_infos_token_id: Vec<String>,
-    #[klickhouse(rename = "callValueInfos.callValue")]
+    #[serde(rename = "callValueInfos.callValue")]
     pub call_value_infos_call_value: Vec<i64>,
-    pub note: Bytes,
+    pub note: String,
     pub rejected: bool,
     pub extra: String,
 }
@@ -493,7 +494,7 @@ pub struct InternalTransactionRow {
 impl InternalTransactionRow {
     pub fn from_grpc(
         block_num: i64,
-        transaction_hash: Vec<u8>,
+        transaction_hash: String,
         internal_index: i32,
         internal: &InternalTransaction,
     ) -> Self {
@@ -505,15 +506,15 @@ impl InternalTransactionRow {
 
         Self {
             block_num,
-            transaction_hash: Bytes(transaction_hash),
+            transaction_hash: hex::encode(&transaction_hash),
             internal_index,
 
-            hash: Bytes(internal.hash.clone()),
-            caller_address: len_20_addr_from_any_vec(internal.caller_address.clone()),
-            transfer_to_address: len_20_addr_from_any_vec(internal.transfer_to_address.clone()),
+            hash: hex::encode(&internal.hash),
+            caller_address: format_tron_address(internal.caller_address.clone()),
+            transfer_to_address: format_tron_address(internal.transfer_to_address.clone()),
             call_value_infos_token_id,
             call_value_infos_call_value,
-            note: Bytes(internal.note.clone()),
+            note: String::from_utf8_lossy(&internal.note).to_string(),
             rejected: internal.rejected,
             extra: internal.extra.clone(),
         }
@@ -535,35 +536,40 @@ impl InternalTransactionRow {
 ) ENGINE = ReplacingMergeTree
 ORDER BY (ownerAddress, accountAddress, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192; */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct AccountCreateContractRow {
+    #[serde(rename = "blockNum")]
     pub block_num: i64,
-    pub transaction_hash: Bytes,
+    #[serde(rename = "transactionHash")]
+    pub transaction_hash: String,
+    #[serde(rename = "transactionIndex")]
     pub transaction_index: i64,
+    #[serde(rename = "contractIndex")]
     pub contract_index: i64,
 
-    pub owner_address: Bytes,
-    pub account_address: Bytes,
+    #[serde(rename = "ownerAddress")]
+    pub owner_address: String,
+    #[serde(rename = "accountAddress")]
+    pub account_address: String,
     pub r#type: i32,
 }
 
 impl AccountCreateContractRow {
     pub fn from_grpc(
         block_num: i64,
-        transaction_hash: Vec<u8>,
+        transaction_hash: String,
         transaction_index: i64,
         contract_index: i64,
         call: &AccountCreateContract,
     ) -> Self {
         Self {
             block_num,
-            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_hash: hex::encode(&transaction_hash),
             transaction_index,
             contract_index,
 
-            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
-            account_address: len_20_addr_from_any_vec(call.account_address.clone()),
+            owner_address: format_tron_address(call.owner_address.clone()),
+            account_address: format_tron_address(call.account_address.clone()),
             r#type: call.r#type,
         }
     }
@@ -584,35 +590,40 @@ ENGINE = ReplacingMergeTree
 ORDER BY (ownerAddress, toAddress, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
 */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct TransferContractRow {
+    #[serde(rename = "blockNum")]
     pub block_num: i64,
-    pub transaction_hash: Bytes,
+    #[serde(rename = "transactionHash")]
+    pub transaction_hash: String,
+    #[serde(rename = "transactionIndex")]
     pub transaction_index: i64,
+    #[serde(rename = "contractIndex")]
     pub contract_index: i64,
 
-    pub owner_address: Bytes,
-    pub to_address: Bytes,
+    #[serde(rename = "ownerAddress")]
+    pub owner_address: String,
+    #[serde(rename = "toAddress")]
+    pub to_address: String,
     pub amount: i64,
 }
 
 impl TransferContractRow {
     pub fn from_grpc(
         block_num: i64,
-        transaction_hash: Vec<u8>,
+        transaction_hash: String,
         transaction_index: i64,
         contract_index: i64,
         call: &TransferContract,
     ) -> Self {
         Self {
             block_num,
-            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_hash: hex::encode(&transaction_hash),
             transaction_index,
             contract_index,
 
-            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
-            to_address: len_20_addr_from_any_vec(call.to_address.clone()),
+            owner_address: format_tron_address(call.owner_address.clone()),
+            to_address: format_tron_address(call.to_address.clone()),
             amount: call.amount,
         }
     }
@@ -633,37 +644,43 @@ impl TransferContractRow {
 ENGINE = ReplacingMergeTree
 ORDER BY (assetName, ownerAddress, toAddress, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192; */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct TransferAssetContractRow {
+    #[serde(rename = "blockNum")]
     pub block_num: i64,
-    pub transaction_hash: Bytes,
+    #[serde(rename = "transactionHash")]
+    pub transaction_hash: String,
+    #[serde(rename = "transactionIndex")]
     pub transaction_index: i64,
+    #[serde(rename = "contractIndex")]
     pub contract_index: i64,
 
-    pub asset_name: Bytes,
-    pub owner_address: Bytes,
-    pub to_address: Bytes,
+    #[serde(rename = "assetName")]
+    pub asset_name: String,
+    #[serde(rename = "ownerAddress")]
+    pub owner_address: String,
+    #[serde(rename = "toAddress")]
+    pub to_address: String,
     pub amount: i64,
 }
 
 impl TransferAssetContractRow {
     pub fn from_grpc(
         block_num: i64,
-        transaction_hash: Vec<u8>,
+        transaction_hash: String,
         transaction_index: i64,
         contract_index: i64,
         call: &TransferAssetContract,
     ) -> Self {
         Self {
             block_num,
-            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_hash: hex::encode(&transaction_hash),
             transaction_index,
             contract_index,
 
-            asset_name: klickhouse::Bytes(call.asset_name.clone()),
-            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
-            to_address: len_20_addr_from_any_vec(call.to_address.clone()),
+            asset_name: String::from_utf8_lossy(&call.asset_name).to_string(),
+            owner_address: format_tron_address(call.owner_address.clone()),
+            to_address: format_tron_address(call.to_address.clone()),
             amount: call.amount,
         }
     }
@@ -683,16 +700,21 @@ impl TransferAssetContractRow {
 ) ENGINE = ReplacingMergeTree
 ORDER BY (ownerAddress, voteAddress, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192; */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct VoteAssetContractRow {
+    #[serde(rename = "blockNum")]
     pub block_num: i64,
-    pub transaction_hash: Bytes,
+    #[serde(rename = "transactionHash")]
+    pub transaction_hash: String,
+    #[serde(rename = "transactionIndex")]
     pub transaction_index: i64,
+    #[serde(rename = "contractIndex")]
     pub contract_index: i64,
 
-    pub owner_address: Bytes,
-    pub vote_address: Vec<Bytes>,
+    #[serde(rename = "ownerAddress")]
+    pub owner_address: String,
+    #[serde(rename = "voteAddress")]
+    pub vote_address: Vec<String>,
     pub support: bool,
     pub count: i32,
 }
@@ -700,22 +722,22 @@ pub struct VoteAssetContractRow {
 impl VoteAssetContractRow {
     pub fn from_grpc(
         block_num: i64,
-        transaction_hash: Vec<u8>,
+        transaction_hash: String,
         transaction_index: i64,
         contract_index: i64,
         call: &VoteAssetContract,
     ) -> Self {
         Self {
             block_num,
-            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_hash: hex::encode(&transaction_hash),
             transaction_index,
             contract_index,
 
-            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
+            owner_address: format_tron_address(call.owner_address.clone()),
             vote_address: call
                 .vote_address
                 .iter()
-                .map(|vote| len_20_addr_from_any_vec(vote.clone()))
+                .map(|vote| format_tron_address(vote.clone()))
                 .collect(),
             support: call.support,
             count: call.count,
@@ -738,18 +760,22 @@ impl VoteAssetContractRow {
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (ownerAddress, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;  */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct VoteWitnessContractRow {
+    #[serde(rename = "blockNum")]
     pub block_num: i64,
-    pub transaction_hash: Bytes,
+    #[serde(rename = "transactionHash")]
+    pub transaction_hash: String,
+    #[serde(rename = "transactionIndex")]
     pub transaction_index: i64,
+    #[serde(rename = "contractIndex")]
     pub contract_index: i64,
 
-    pub owner_address: Bytes,
-    #[klickhouse(rename = "votes.voteAddress")]
-    pub votes_vote_address: Vec<Bytes>,
-    #[klickhouse(rename = "votes.voteCount")]
+    #[serde(rename = "ownerAddress")]
+    pub owner_address: String,
+    #[serde(rename = "votes.voteAddress")]
+    pub votes_vote_address: Vec<String>,
+    #[serde(rename = "votes.voteCount")]
     pub votes_vote_count: Vec<i64>,
     pub support: bool,
 }
@@ -757,22 +783,22 @@ pub struct VoteWitnessContractRow {
 impl VoteWitnessContractRow {
     pub fn from_grpc(
         block_num: i64,
-        transaction_hash: Vec<u8>,
+        transaction_hash: String,
         transaction_index: i64,
         contract_index: i64,
         call: &VoteWitnessContract,
     ) -> Self {
         Self {
             block_num,
-            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_hash: hex::encode(&transaction_hash),
             transaction_index,
             contract_index,
 
-            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
+            owner_address: format_tron_address(call.owner_address.clone()),
             votes_vote_address: call
                 .votes
                 .iter()
-                .map(|vote| len_20_addr_from_any_vec(vote.vote_address.clone()))
+                .map(|vote| format_tron_address(vote.vote_address.clone()))
                 .collect(),
             votes_vote_count: call.votes.iter().map(|vote| vote.vote_count).collect(),
             support: call.support,
@@ -780,17 +806,18 @@ impl VoteWitnessContractRow {
     }
 }
 
-#[derive(Row, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Vote {
-    vote_address: Bytes,
+    #[serde(rename = "voteAddress")]
+    vote_address: String,
+    #[serde(rename = "voteCount")]
     vote_count: i64,
 }
 
 impl Vote {
     pub fn from_grpc(vote: tron_grpc::Vote) -> Self {
         Self {
-            vote_address: len_20_addr_from_any_vec(vote.vote_address),
+            vote_address: format_tron_address(vote.vote_address),
             vote_count: vote.vote_count,
         }
     }
@@ -807,34 +834,38 @@ impl Vote {
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (ownerAddress, url, blockNum, transactionHash, contractIndex)
 */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct WitnessCreateContractRow {
+    #[serde(rename = "blockNum")]
     pub block_num: i64,
-    pub transaction_hash: Bytes,
+    #[serde(rename = "transactionHash")]
+    pub transaction_hash: String,
+    #[serde(rename = "transactionIndex")]
     pub transaction_index: i64,
+    #[serde(rename = "contractIndex")]
     pub contract_index: i64,
 
-    pub owner_address: Bytes,
-    pub url: Bytes,
+    #[serde(rename = "ownerAddress")]
+    pub owner_address: String,
+    pub url: String,
 }
 
 impl WitnessCreateContractRow {
     pub fn from_grpc(
         block_num: i64,
-        transaction_hash: Vec<u8>,
+        transaction_hash: String,
         transaction_index: i64,
         contract_index: i64,
         call: &WitnessCreateContract,
     ) -> Self {
         Self {
             block_num,
-            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_hash: hex::encode(&transaction_hash),
             transaction_index,
             contract_index,
 
-            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
-            url: Bytes(call.url.clone()),
+            owner_address: format_tron_address(call.owner_address.clone()),
+            url: String::from_utf8_lossy(&call.url).to_string(),
         }
     }
 }
@@ -867,52 +898,65 @@ impl WitnessCreateContractRow {
 ORDER BY (ownerAddress, blockNum, transactionHash, contractIndex, name, abbr, url, id)
 SETTINGS index_granularity = 8192;
 */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct AssetIssueContractRow {
+    #[serde(rename = "blockNum")]
     pub block_num: i64,
-    pub transaction_hash: Bytes,
+    #[serde(rename = "transactionHash")]
+    pub transaction_hash: String,
+    #[serde(rename = "transactionIndex")]
     pub transaction_index: i64,
+    #[serde(rename = "contractIndex")]
     pub contract_index: i64,
 
     pub id: String,
-    pub owner_address: Bytes,
-    pub name: Bytes,
-    pub abbr: Bytes,
+    #[serde(rename = "ownerAddress")]
+    pub owner_address: String,
+    pub name: String,
+    pub abbr: String,
+    #[serde(rename = "totalSupply")]
     pub total_supply: i64,
+    #[serde(rename = "trxNum")]
     pub trx_num: i32,
     pub precision: i32,
     pub num: i32,
+    #[serde(rename = "startTime")]
     pub start_time: i64,
+    #[serde(rename = "endTime")]
     pub end_time: i64,
     pub order: i64, // useless but still added
+    #[serde(rename = "voteScore")]
     pub vote_score: i32,
-    pub description: Bytes,
-    pub url: Bytes,
+    pub description: String,
+    pub url: String,
+    #[serde(rename = "freeAssetNetLimit")]
     pub free_asset_net_limit: i64,
+    #[serde(rename = "publicFreeAssetNetLimit")]
     pub public_free_asset_net_limit: i64,
+    #[serde(rename = "publicFreeAssetNetUsage")]
     pub public_free_asset_net_usage: i64,
+    #[serde(rename = "publicLatestFreeNetTime")]
     pub public_latest_free_net_time: i64,
 }
 
 impl AssetIssueContractRow {
     pub fn from_grpc(
         block_num: i64,
-        transaction_hash: Vec<u8>,
+        transaction_hash: String,
         transaction_index: i64,
         contract_index: i64,
         call: &AssetIssueContract,
     ) -> Self {
         Self {
             block_num,
-            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_hash: hex::encode(&transaction_hash),
             transaction_index,
             contract_index,
 
             id: call.id.clone(),
-            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
-            name: klickhouse::Bytes(call.name.clone()),
-            abbr: klickhouse::Bytes(call.abbr.clone()),
+            owner_address: format_tron_address(call.owner_address.clone()),
+            name: String::from_utf8_lossy(&call.name).to_string(),
+            abbr: String::from_utf8_lossy(&call.abbr).to_string(),
             total_supply: call.total_supply,
             trx_num: call.trx_num,
             precision: call.precision,
@@ -921,8 +965,8 @@ impl AssetIssueContractRow {
             end_time: call.end_time,
             order: call.order,
             vote_score: call.vote_score,
-            description: klickhouse::Bytes(call.description.clone()),
-            url: klickhouse::Bytes(call.url.clone()),
+            description: String::from_utf8_lossy(&call.description).to_string(),
+            url: String::from_utf8_lossy(&call.url).to_string(),
             free_asset_net_limit: call.free_asset_net_limit,
             public_free_asset_net_limit: call.public_free_asset_net_limit,
             public_free_asset_net_usage: call.public_free_asset_net_usage,
@@ -944,34 +988,39 @@ CREATE TABLE IF NOT EXISTS witnessUpdateContracts (
 ORDER BY (ownerAddress, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
 */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct WitnessUpdateContractRow {
+    #[serde(rename = "blockNum")]
     pub block_num: i64,
-    pub transaction_hash: Bytes,
+    #[serde(rename = "transactionHash")]
+    pub transaction_hash: String,
+    #[serde(rename = "transactionIndex")]
     pub transaction_index: i64,
+    #[serde(rename = "contractIndex")]
     pub contract_index: i64,
 
-    pub owner_address: Bytes,
-    pub update_url: Bytes,
+    #[serde(rename = "ownerAddress")]
+    pub owner_address: String,
+    #[serde(rename = "updateUrl")]
+    pub update_url: String,
 }
 
 impl WitnessUpdateContractRow {
     pub fn from_grpc(
         block_num: i64,
-        transaction_hash: Vec<u8>,
+        transaction_hash: String,
         transaction_index: i64,
         contract_index: i64,
         call: &WitnessUpdateContract,
     ) -> Self {
         Self {
             block_num,
-            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_hash: hex::encode(&transaction_hash),
             transaction_index,
             contract_index,
 
-            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
-            update_url: klickhouse::Bytes(call.update_url.clone()),
+            owner_address: format_tron_address(call.owner_address.clone()),
+            update_url: String::from_utf8_lossy(&call.update_url).to_string(),
         }
     }
 }
@@ -989,37 +1038,43 @@ impl WitnessUpdateContractRow {
 ) ENGINE = ReplacingMergeTree()
 ORDER BY (ownerAddress, toAddress, assetName, blockNum, transactionHash, contractIndex)
 */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct ParticipateAssetIssueContractRow {
+    #[serde(rename = "blockNum")]
     pub block_num: i64,
-    pub transaction_hash: Bytes,
+    #[serde(rename = "transactionHash")]
+    pub transaction_hash: String,
+    #[serde(rename = "transactionIndex")]
     pub transaction_index: i64,
+    #[serde(rename = "contractIndex")]
     pub contract_index: i64,
 
-    pub owner_address: Bytes,
-    pub to_address: Bytes,
-    pub asset_name: Bytes,
+    #[serde(rename = "ownerAddress")]
+    pub owner_address: String,
+    #[serde(rename = "toAddress")]
+    pub to_address: String,
+    #[serde(rename = "assetName")]
+    pub asset_name: String,
     pub amount: i64,
 }
 
 impl ParticipateAssetIssueContractRow {
     pub fn from_grpc(
         block_num: i64,
-        transaction_hash: Vec<u8>,
+        transaction_hash: String,
         transaction_index: i64,
         contract_index: i64,
         call: &ParticipateAssetIssueContract,
     ) -> Self {
         Self {
             block_num,
-            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_hash: hex::encode(&transaction_hash),
             transaction_index,
             contract_index,
 
-            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
-            to_address: len_20_addr_from_any_vec(call.to_address.clone()),
-            asset_name: klickhouse::Bytes(call.asset_name.clone()),
+            owner_address: format_tron_address(call.owner_address.clone()),
+            to_address: format_tron_address(call.to_address.clone()),
+            asset_name: String::from_utf8_lossy(&call.asset_name).to_string(),
             amount: call.amount,
         }
     }
@@ -1037,34 +1092,39 @@ impl ParticipateAssetIssueContractRow {
 ORDER BY (ownerAddress, accountName, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
 */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct AccountUpdateContractRow {
+    #[serde(rename = "blockNum")]
     pub block_num: i64,
-    pub transaction_hash: Bytes,
+    #[serde(rename = "transactionHash")]
+    pub transaction_hash: String,
+    #[serde(rename = "transactionIndex")]
     pub transaction_index: i64,
+    #[serde(rename = "contractIndex")]
     pub contract_index: i64,
 
-    pub owner_address: Bytes,
-    pub account_name: Bytes,
+    #[serde(rename = "ownerAddress")]
+    pub owner_address: String,
+    #[serde(rename = "accountName")]
+    pub account_name: String,
 }
 
 impl AccountUpdateContractRow {
     pub fn from_grpc(
         block_num: i64,
-        transaction_hash: Vec<u8>,
+        transaction_hash: String,
         transaction_index: i64,
         contract_index: i64,
         call: &AccountUpdateContract,
     ) -> Self {
         Self {
             block_num,
-            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_hash: hex::encode(&transaction_hash),
             transaction_index,
             contract_index,
 
-            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
-            account_name: klickhouse::Bytes(call.account_name.clone()),
+            owner_address: format_tron_address(call.owner_address.clone()),
+            account_name: String::from_utf8_lossy(&call.account_name).to_string(),
         }
     }
 }
@@ -1084,39 +1144,46 @@ impl AccountUpdateContractRow {
 ORDER BY (ownerAddress, receiverAddress, resource, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
 */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct FreezeBalanceContractRow {
+    #[serde(rename = "blockNum")]
     pub block_num: i64,
-    pub transaction_hash: Bytes,
+    #[serde(rename = "transactionHash")]
+    pub transaction_hash: String,
+    #[serde(rename = "transactionIndex")]
     pub transaction_index: i64,
+    #[serde(rename = "contractIndex")]
     pub contract_index: i64,
 
-    pub owner_address: Bytes,
+    #[serde(rename = "ownerAddress")]
+    pub owner_address: String,
+    #[serde(rename = "frozenBalance")]
     pub frozen_balance: i64,
+    #[serde(rename = "frozenDuration")]
     pub frozen_duration: i64,
     pub resource: i32,
-    pub receiver_address: Bytes,
+    #[serde(rename = "receiverAddress")]
+    pub receiver_address: String,
 }
 impl FreezeBalanceContractRow {
     pub fn from_grpc(
         block_num: i64,
-        transaction_hash: Vec<u8>,
+        transaction_hash: String,
         transaction_index: i64,
         contract_index: i64,
         call: &FreezeBalanceContract,
     ) -> Self {
         Self {
             block_num,
-            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_hash: hex::encode(&transaction_hash),
             transaction_index,
             contract_index,
 
-            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
+            owner_address: format_tron_address(call.owner_address.clone()),
             frozen_balance: call.frozen_balance,
             frozen_duration: call.frozen_duration,
             resource: call.resource,
-            receiver_address: len_20_addr_from_any_vec(call.receiver_address.clone()),
+            receiver_address: format_tron_address(call.receiver_address.clone()),
         }
     }
 }
@@ -1134,36 +1201,41 @@ impl FreezeBalanceContractRow {
 ORDER BY (ownerAddress, receiverAddress, resource, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
 */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct UnfreezeBalanceContractRow {
+    #[serde(rename = "blockNum")]
     pub block_num: i64,
-    pub transaction_hash: Bytes,
+    #[serde(rename = "transactionHash")]
+    pub transaction_hash: String,
+    #[serde(rename = "transactionIndex")]
     pub transaction_index: i64,
+    #[serde(rename = "contractIndex")]
     pub contract_index: i64,
 
-    pub owner_address: Bytes,
+    #[serde(rename = "ownerAddress")]
+    pub owner_address: String,
     pub resource: i32,
-    pub receiver_address: Bytes,
+    #[serde(rename = "receiverAddress")]
+    pub receiver_address: String,
 }
 
 impl UnfreezeBalanceContractRow {
     pub fn from_grpc(
         block_num: i64,
-        transaction_hash: Vec<u8>,
+        transaction_hash: String,
         transaction_index: i64,
         contract_index: i64,
         call: &UnfreezeBalanceContract,
     ) -> Self {
         Self {
             block_num,
-            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_hash: hex::encode(&transaction_hash),
             transaction_index,
             contract_index,
 
-            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
+            owner_address: format_tron_address(call.owner_address.clone()),
             resource: call.resource,
-            receiver_address: len_20_addr_from_any_vec(call.receiver_address.clone()),
+            receiver_address: format_tron_address(call.receiver_address.clone()),
         }
     }
 }
@@ -1179,32 +1251,36 @@ impl UnfreezeBalanceContractRow {
 ORDER BY (ownerAddress, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
 */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct WithdrawBalanceContractRow {
+    #[serde(rename = "blockNum")]
     pub block_num: i64,
-    pub transaction_hash: Bytes,
+    #[serde(rename = "transactionHash")]
+    pub transaction_hash: String,
+    #[serde(rename = "transactionIndex")]
     pub transaction_index: i64,
+    #[serde(rename = "contractIndex")]
     pub contract_index: i64,
 
-    pub owner_address: Bytes,
+    #[serde(rename = "ownerAddress")]
+    pub owner_address: String,
 }
 
 impl WithdrawBalanceContractRow {
     pub fn from_grpc(
         block_num: i64,
-        transaction_hash: Vec<u8>,
+        transaction_hash: String,
         transaction_index: i64,
         contract_index: i64,
         call: &WithdrawBalanceContract,
     ) -> Self {
         Self {
             block_num,
-            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_hash: hex::encode(&transaction_hash),
             transaction_index,
             contract_index,
 
-            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
+            owner_address: format_tron_address(call.owner_address.clone()),
         }
     }
 }
@@ -1220,32 +1296,36 @@ impl WithdrawBalanceContractRow {
 ORDER BY (ownerAddress, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
 */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct UnfreezeAssetContractRow {
+    #[serde(rename = "blockNum")]
     pub block_num: i64,
-    pub transaction_hash: Bytes,
+    #[serde(rename = "transactionHash")]
+    pub transaction_hash: String,
+    #[serde(rename = "transactionIndex")]
     pub transaction_index: i64,
+    #[serde(rename = "contractIndex")]
     pub contract_index: i64,
 
-    pub owner_address: Bytes,
+    #[serde(rename = "ownerAddress")]
+    pub owner_address: String,
 }
 
 impl UnfreezeAssetContractRow {
     pub fn from_grpc(
         block_num: i64,
-        transaction_hash: Vec<u8>,
+        transaction_hash: String,
         transaction_index: i64,
         contract_index: i64,
         call: &UnfreezeAssetContract,
     ) -> Self {
         Self {
             block_num,
-            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_hash: hex::encode(&transaction_hash),
             transaction_index,
             contract_index,
 
-            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
+            owner_address: format_tron_address(call.owner_address.clone()),
         }
     }
 }
@@ -1265,38 +1345,44 @@ impl UnfreezeAssetContractRow {
 ORDER BY (ownerAddress, url, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
 */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct UpdateAssetContractRow {
+    #[serde(rename = "blockNum")]
     pub block_num: i64,
-    pub transaction_hash: Bytes,
+    #[serde(rename = "transactionHash")]
+    pub transaction_hash: String,
+    #[serde(rename = "transactionIndex")]
     pub transaction_index: i64,
+    #[serde(rename = "contractIndex")]
     pub contract_index: i64,
 
-    pub owner_address: Bytes,
-    pub description: Bytes,
-    pub url: Bytes,
+    #[serde(rename = "ownerAddress")]
+    pub owner_address: String,
+    pub description: String,
+    pub url: String,
+    #[serde(rename = "newLimit")]
     pub new_limit: i64,
+    #[serde(rename = "newPublicLimit")]
     pub new_public_limit: i64,
 }
 
 impl UpdateAssetContractRow {
     pub fn from_grpc(
         block_num: i64,
-        transaction_hash: Vec<u8>,
+        transaction_hash: String,
         transaction_index: i64,
         contract_index: i64,
         call: &UpdateAssetContract,
     ) -> Self {
         Self {
             block_num,
-            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_hash: hex::encode(&transaction_hash),
             transaction_index,
             contract_index,
 
-            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
-            description: klickhouse::Bytes(call.description.clone()),
-            url: klickhouse::Bytes(call.url.clone()),
+            owner_address: format_tron_address(call.owner_address.clone()),
+            description: String::from_utf8_lossy(&call.description).to_string(),
+            url: String::from_utf8_lossy(&call.url).to_string(),
             new_limit: call.new_limit,
             new_public_limit: call.new_public_limit,
         }
@@ -1315,33 +1401,37 @@ impl UpdateAssetContractRow {
 ORDER BY (ownerAddress, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
 */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct ProposalCreateContractRow {
+    #[serde(rename = "blockNum")]
     pub block_num: i64,
-    pub transaction_hash: Bytes,
+    #[serde(rename = "transactionHash")]
+    pub transaction_hash: String,
+    #[serde(rename = "transactionIndex")]
     pub transaction_index: i64,
+    #[serde(rename = "contractIndex")]
     pub contract_index: i64,
 
-    pub owner_address: Bytes,
+    #[serde(rename = "ownerAddress")]
+    pub owner_address: String,
     pub parameters: HashMap<i64, i64>,
 }
 
 impl ProposalCreateContractRow {
     pub fn from_grpc(
         block_num: i64,
-        transaction_hash: Vec<u8>,
+        transaction_hash: String,
         transaction_index: i64,
         contract_index: i64,
         call: &ProposalCreateContract,
     ) -> Self {
         Self {
             block_num,
-            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_hash: hex::encode(&transaction_hash),
             transaction_index,
             contract_index,
 
-            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
+            owner_address: format_tron_address(call.owner_address.clone()),
             parameters: call.parameters.clone(),
         }
     }
@@ -1360,34 +1450,40 @@ impl ProposalCreateContractRow {
 ORDER BY (ownerAddress, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
 */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct ProposalApproveContractRow {
+    #[serde(rename = "blockNum")]
     pub block_num: i64,
-    pub transaction_hash: Bytes,
+    #[serde(rename = "transactionHash")]
+    pub transaction_hash: String,
+    #[serde(rename = "transactionIndex")]
     pub transaction_index: i64,
+    #[serde(rename = "contractIndex")]
     pub contract_index: i64,
 
-    pub owner_address: Bytes,
+    #[serde(rename = "ownerAddress")]
+    pub owner_address: String,
+    #[serde(rename = "proposalId")]
     pub proposal_id: i64,
+    #[serde(rename = "isAddApproval")]
     pub is_add_approval: bool,
 }
 
 impl ProposalApproveContractRow {
     pub fn from_grpc(
         block_num: i64,
-        transaction_hash: Vec<u8>,
+        transaction_hash: String,
         transaction_index: i64,
         contract_index: i64,
         call: &ProposalApproveContract,
     ) -> Self {
         Self {
             block_num,
-            transaction_hash: Bytes(transaction_hash),
+            transaction_hash: hex::encode(&transaction_hash),
             transaction_index,
             contract_index,
 
-            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
+            owner_address: format_tron_address(call.owner_address.clone()),
             proposal_id: call.proposal_id,
             is_add_approval: call.is_add_approval,
         }
@@ -1406,33 +1502,38 @@ impl ProposalApproveContractRow {
 ORDER BY (ownerAddress, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
 */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct ProposalDeleteContractRow {
+    #[serde(rename = "blockNum")]
     pub block_num: i64,
-    pub transaction_hash: Bytes,
+    #[serde(rename = "transactionHash")]
+    pub transaction_hash: String,
+    #[serde(rename = "transactionIndex")]
     pub transaction_index: i64,
+    #[serde(rename = "contractIndex")]
     pub contract_index: i64,
 
-    pub owner_address: Bytes,
+    #[serde(rename = "ownerAddress")]
+    pub owner_address: String,
+    #[serde(rename = "proposalId")]
     pub proposal_id: i64,
 }
 
 impl ProposalDeleteContractRow {
     pub fn from_grpc(
         block_num: i64,
-        transaction_hash: Vec<u8>,
+        transaction_hash: String,
         transaction_index: i64,
         contract_index: i64,
         call: &ProposalDeleteContract,
     ) -> Self {
         Self {
             block_num,
-            transaction_hash: Bytes(transaction_hash),
+            transaction_hash: hex::encode(&transaction_hash),
             transaction_index,
             contract_index,
 
-            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
+            owner_address: format_tron_address(call.owner_address.clone()),
             proposal_id: call.proposal_id,
         }
     }
@@ -1450,34 +1551,39 @@ impl ProposalDeleteContractRow {
 ORDER BY (ownerAddress, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
 */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct SetAccountIdContractRow {
+    #[serde(rename = "blockNum")]
     pub block_num: i64,
-    pub transaction_hash: Bytes,
+    #[serde(rename = "transactionHash")]
+    pub transaction_hash: String,
+    #[serde(rename = "transactionIndex")]
     pub transaction_index: i64,
+    #[serde(rename = "contractIndex")]
     pub contract_index: i64,
 
-    pub account_id: Bytes,
-    pub owner_address: Bytes,
+    #[serde(rename = "accountId")]
+    pub account_id: String,
+    #[serde(rename = "ownerAddress")]
+    pub owner_address: String,
 }
 
 impl SetAccountIdContractRow {
     pub fn from_grpc(
         block_num: i64,
-        transaction_hash: Vec<u8>,
+        transaction_hash: String,
         transaction_index: i64,
         contract_index: i64,
         call: &SetAccountIdContract,
     ) -> Self {
         Self {
             block_num,
-            transaction_hash: Bytes(transaction_hash),
+            transaction_hash: hex::encode(&transaction_hash),
             transaction_index,
             contract_index,
 
-            account_id: Bytes(call.account_id.clone()),
-            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
+            account_id: String::from_utf8_lossy(&call.account_id).to_string(),
+            owner_address: format_tron_address(call.owner_address.clone()),
         }
     }
 }
@@ -1508,41 +1614,53 @@ impl SetAccountIdContractRow {
 ORDER BY (ownerAddress, originAddress, contractAddress, name, blockNum, transactionHash, trxHash, codeHash, contractIndex)
 SETTINGS index_granularity = 8192, allow_nullable_key=1;
 */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct CreateSmartContractRow {
+    #[serde(rename = "blockNum")]
     pub block_num: i64,
-    pub transaction_hash: Bytes,
+    #[serde(rename = "transactionHash")]
+    pub transaction_hash: String,
+    #[serde(rename = "transactionIndex")]
     pub transaction_index: i64,
+    #[serde(rename = "contractIndex")]
     pub contract_index: i64,
 
-    pub owner_address: Bytes,
-    #[klickhouse(flatten)]
+    #[serde(rename = "ownerAddress")]
+    pub owner_address: String,
+    #[serde(flatten)]
     pub new_contract: SmartContractField,
+    #[serde(rename = "callTokenValue")]
     pub call_token_value: i64,
+    #[serde(rename = "tokenId")]
     pub token_id: i64,
 }
 
-#[derive(Row, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct SmartContractField {
-    pub origin_address: Option<Bytes>,
-    pub contract_address: Option<Bytes>,
+    #[serde(rename = "originAddress")]
+    pub origin_address: Option<String>,
+    #[serde(rename = "contractAddress")]
+    pub contract_address: Option<String>,
     pub abi: Option<String>, // save as string
-    pub bytecode: Option<Bytes>,
+    pub bytecode: Option<String>,
+    #[serde(rename = "callValue")]
     pub call_value: Option<i64>,
+    #[serde(rename = "consumeUserResourcePercent")]
     pub consume_user_resource_percent: Option<i64>,
     pub name: Option<String>,
+    #[serde(rename = "originEnergyLimit")]
     pub origin_energy_limit: Option<i64>,
-    pub code_hash: Option<Bytes>,
-    pub trx_hash: Option<Bytes>,
+    #[serde(rename = "codeHash")]
+    pub code_hash: Option<String>,
+    #[serde(rename = "trxHash")]
+    pub trx_hash: Option<String>,
     pub version: Option<i32>,
 }
 
 impl CreateSmartContractRow {
     pub fn from_grpc(
         block_num: i64,
-        transaction_hash: Vec<u8>,
+        transaction_hash: String,
         transaction_index: i64,
         contract_index: i64,
         call: &CreateSmartContract,
@@ -1550,16 +1668,16 @@ impl CreateSmartContractRow {
         let new_contract = call.new_contract.clone();
         Self {
             block_num,
-            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_hash: hex::encode(&transaction_hash),
             transaction_index,
             contract_index,
-            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
+            owner_address: format_tron_address(call.owner_address.clone()),
             new_contract: SmartContractField {
                 origin_address: new_contract.as_ref().map_or(None, |sc| {
-                    Some(len_20_addr_from_any_vec(sc.origin_address.clone()))
+                    Some(format_tron_address(sc.origin_address.clone()))
                 }),
                 contract_address: new_contract.as_ref().map_or(None, |sc| {
-                    Some(len_20_addr_from_any_vec(sc.contract_address.clone()))
+                    Some(format_tron_address(sc.contract_address.clone()))
                 }),
                 abi: new_contract.as_ref().map_or(None, |sc| {
                     sc.abi
@@ -1568,7 +1686,7 @@ impl CreateSmartContractRow {
                 }),
                 bytecode: new_contract
                     .as_ref()
-                    .map_or(None, |sc| Some(klickhouse::Bytes(sc.bytecode.clone()))),
+                    .map_or(None, |sc| Some(hex::encode(&sc.bytecode))),
                 call_value: new_contract.as_ref().map_or(None, |sc| Some(sc.call_value)),
                 consume_user_resource_percent: new_contract
                     .as_ref()
@@ -1581,10 +1699,10 @@ impl CreateSmartContractRow {
                     .map_or(None, |sc| Some(sc.origin_energy_limit)),
                 code_hash: new_contract
                     .as_ref()
-                    .map_or(None, |sc| Some(klickhouse::Bytes(sc.code_hash.clone()))),
+                    .map_or(None, |sc| Some(hex::encode(&sc.code_hash))),
                 trx_hash: new_contract
                     .as_ref()
-                    .map_or(None, |sc| Some(klickhouse::Bytes(sc.trx_hash.clone()))),
+                    .map_or(None, |sc| Some(hex::encode(&sc.trx_hash))),
                 version: new_contract.as_ref().map_or(None, |sc| Some(sc.version)),
             },
             call_token_value: call.call_token_value,
@@ -1609,40 +1727,48 @@ impl CreateSmartContractRow {
 ORDER BY (ownerAddress, contractAddress, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
 */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct TriggerSmartContractRow {
+    #[serde(rename = "blockNum")]
     pub block_num: i64,
-    pub transaction_hash: Bytes,
+    #[serde(rename = "transactionHash")]
+    pub transaction_hash: String,
+    #[serde(rename = "transactionIndex")]
     pub transaction_index: i64,
+    #[serde(rename = "contractIndex")]
     pub contract_index: i64,
 
-    pub owner_address: Bytes,
-    pub contract_address: Bytes,
+    #[serde(rename = "ownerAddress")]
+    pub owner_address: String,
+    #[serde(rename = "contractAddress")]
+    pub contract_address: String,
+    #[serde(rename = "callValue")]
     pub call_value: i64,
-    pub data: Bytes,
+    pub data: String,
+    #[serde(rename = "callTokenValue")]
     pub call_token_value: i64,
+    #[serde(rename = "tokenId")]
     pub token_id: i64,
 }
 
 impl TriggerSmartContractRow {
     pub fn from_grpc(
         block_num: i64,
-        transaction_hash: Vec<u8>,
+        transaction_hash: String,
         transaction_index: i64,
         contract_index: i64,
         call: &TriggerSmartContract,
     ) -> Self {
         Self {
             block_num,
-            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_hash: hex::encode(&transaction_hash),
             transaction_index,
             contract_index,
 
-            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
-            contract_address: len_20_addr_from_any_vec(call.contract_address.clone()),
+            owner_address: format_tron_address(call.owner_address.clone()),
+            contract_address: format_tron_address(call.contract_address.clone()),
             call_value: call.call_value,
-            data: klickhouse::Bytes(call.data.clone()),
+            data: hex::encode(&call.data),
             call_token_value: call.call_token_value,
             token_id: call.token_id,
         }
@@ -1662,35 +1788,41 @@ impl TriggerSmartContractRow {
 ORDER BY (ownerAddress, contractAddress, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
 */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct UpdateSettingContractRow {
+    #[serde(rename = "blockNum")]
     pub block_num: i64,
-    pub transaction_hash: Bytes,
+    #[serde(rename = "transactionHash")]
+    pub transaction_hash: String,
+    #[serde(rename = "transactionIndex")]
     pub transaction_index: i64,
+    #[serde(rename = "contractIndex")]
     pub contract_index: i64,
 
-    pub owner_address: Bytes,
-    pub contract_address: Bytes,
+    #[serde(rename = "ownerAddress")]
+    pub owner_address: String,
+    #[serde(rename = "contractAddress")]
+    pub contract_address: String,
+    #[serde(rename = "consumeUserResourcePercent")]
     pub consume_user_resource_percent: i64,
 }
 
 impl UpdateSettingContractRow {
     pub fn from_grpc(
         block_num: i64,
-        transaction_hash: Vec<u8>,
+        transaction_hash: String,
         transaction_index: i64,
         contract_index: i64,
         call: &UpdateSettingContract,
     ) -> Self {
         Self {
             block_num,
-            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_hash: hex::encode(&transaction_hash),
             transaction_index,
             contract_index,
 
-            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
-            contract_address: len_20_addr_from_any_vec(call.contract_address.clone()),
+            owner_address: format_tron_address(call.owner_address.clone()),
+            contract_address: format_tron_address(call.contract_address.clone()),
             consume_user_resource_percent: call.consume_user_resource_percent,
         }
     }
@@ -1711,39 +1843,47 @@ impl UpdateSettingContractRow {
 ORDER BY (ownerAddress, firstTokenId, secondTokenId, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
 */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct ExchangeCreateContractRow {
+    #[serde(rename = "blockNum")]
     pub block_num: i64,
-    pub transaction_hash: Bytes,
+    #[serde(rename = "transactionHash")]
+    pub transaction_hash: String,
+    #[serde(rename = "transactionIndex")]
     pub transaction_index: i64,
+    #[serde(rename = "contractIndex")]
     pub contract_index: i64,
 
-    pub owner_address: Bytes,
-    pub first_token_id: Bytes,
+    #[serde(rename = "ownerAddress")]
+    pub owner_address: String,
+    #[serde(rename = "firstTokenId")]
+    pub first_token_id: String,
+    #[serde(rename = "firstTokenBalance")]
     pub first_token_balance: i64,
-    pub second_token_id: Bytes,
+    #[serde(rename = "secondTokenId")]
+    pub second_token_id: String,
+    #[serde(rename = "secondTokenBalance")]
     pub second_token_balance: i64,
 }
 
 impl ExchangeCreateContractRow {
     pub fn from_grpc(
         block_num: i64,
-        transaction_hash: Vec<u8>,
+        transaction_hash: String,
         transaction_index: i64,
         contract_index: i64,
         call: &ExchangeCreateContract,
     ) -> Self {
         Self {
             block_num,
-            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_hash: hex::encode(&transaction_hash),
             transaction_index,
             contract_index,
 
-            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
-            first_token_id: klickhouse::Bytes(call.first_token_id.clone()),
+            owner_address: format_tron_address(call.owner_address.clone()),
+            first_token_id: String::from_utf8_lossy(&call.first_token_id).to_string(),
             first_token_balance: call.first_token_balance,
-            second_token_id: klickhouse::Bytes(call.second_token_id.clone()),
+            second_token_id: String::from_utf8_lossy(&call.second_token_id).to_string(),
             second_token_balance: call.second_token_balance,
         }
     }
@@ -1763,37 +1903,43 @@ impl ExchangeCreateContractRow {
 ORDER BY (ownerAddress, exchangeId, tokenId, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
 */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct ExchangeInjectContractRow {
+    #[serde(rename = "blockNum")]
     pub block_num: i64,
-    pub transaction_hash: Bytes,
+    #[serde(rename = "transactionHash")]
+    pub transaction_hash: String,
+    #[serde(rename = "transactionIndex")]
     pub transaction_index: i64,
+    #[serde(rename = "contractIndex")]
     pub contract_index: i64,
 
-    pub owner_address: Bytes,
+    #[serde(rename = "ownerAddress")]
+    pub owner_address: String,
+    #[serde(rename = "exchangeId")]
     pub exchange_id: i64,
-    pub token_id: Bytes,
+    #[serde(rename = "tokenId")]
+    pub token_id: String,
     pub quant: i64,
 }
 
 impl ExchangeInjectContractRow {
     pub fn from_grpc(
         block_num: i64,
-        transaction_hash: Vec<u8>,
+        transaction_hash: String,
         transaction_index: i64,
         contract_index: i64,
         call: &ExchangeInjectContract,
     ) -> Self {
         Self {
             block_num,
-            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_hash: hex::encode(&transaction_hash),
             transaction_index,
             contract_index,
 
-            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
+            owner_address: format_tron_address(call.owner_address.clone()),
             exchange_id: call.exchange_id,
-            token_id: klickhouse::Bytes(call.token_id.clone()),
+            token_id: String::from_utf8_lossy(&call.token_id).to_string(),
             quant: call.quant,
         }
     }
@@ -1813,37 +1959,43 @@ impl ExchangeInjectContractRow {
 ORDER BY (ownerAddress, exchangeId, tokenId, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
 */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct ExchangeWithdrawContractRow {
+    #[serde(rename = "blockNum")]
     pub block_num: i64,
-    pub transaction_hash: Bytes,
+    #[serde(rename = "transactionHash")]
+    pub transaction_hash: String,
+    #[serde(rename = "transactionIndex")]
     pub transaction_index: i64,
+    #[serde(rename = "contractIndex")]
     pub contract_index: i64,
 
-    pub owner_address: Bytes,
+    #[serde(rename = "ownerAddress")]
+    pub owner_address: String,
+    #[serde(rename = "exchangeId")]
     pub exchange_id: i64,
-    pub token_id: Bytes,
+    #[serde(rename = "tokenId")]
+    pub token_id: String,
     pub quant: i64,
 }
 
 impl ExchangeWithdrawContractRow {
     pub fn from_grpc(
         block_num: i64,
-        transaction_hash: Vec<u8>,
+        transaction_hash: String,
         transaction_index: i64,
         contract_index: i64,
         call: &ExchangeWithdrawContract,
     ) -> Self {
         Self {
             block_num,
-            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_hash: hex::encode(&transaction_hash),
             transaction_index,
             contract_index,
 
-            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
+            owner_address: format_tron_address(call.owner_address.clone()),
             exchange_id: call.exchange_id,
-            token_id: klickhouse::Bytes(call.token_id.clone()),
+            token_id: hex::encode(&call.token_id),
             quant: call.quant,
         }
     }
@@ -1864,17 +2016,23 @@ impl ExchangeWithdrawContractRow {
 ORDER BY (ownerAddress, exchangeId, tokenId, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
 */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct ExchangeTransactionContractRow {
+    #[serde(rename = "blockNum")]
     pub block_num: i64,
-    pub transaction_hash: Bytes,
+    #[serde(rename = "transactionHash")]
+    pub transaction_hash: String,
+    #[serde(rename = "transactionIndex")]
     pub transaction_index: i64,
+    #[serde(rename = "contractIndex")]
     pub contract_index: i64,
 
-    pub owner_address: Bytes,
+    #[serde(rename = "ownerAddress")]
+    pub owner_address: String,
+    #[serde(rename = "exchangeId")]
     pub exchange_id: i64,
-    pub token_id: Bytes,
+    #[serde(rename = "tokenId")]
+    pub token_id: String,
     pub quant: i64,
     pub expected: i64,
 }
@@ -1882,20 +2040,20 @@ pub struct ExchangeTransactionContractRow {
 impl ExchangeTransactionContractRow {
     pub fn from_grpc(
         block_num: i64,
-        transaction_hash: Vec<u8>,
+        transaction_hash: String,
         transaction_index: i64,
         contract_index: i64,
         call: &ExchangeTransactionContract,
     ) -> Self {
         Self {
             block_num,
-            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_hash: hex::encode(&transaction_hash),
             transaction_index,
             contract_index,
 
-            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
+            owner_address: format_tron_address(call.owner_address.clone()),
             exchange_id: call.exchange_id,
-            token_id: klickhouse::Bytes(call.token_id.clone()),
+            token_id: hex::encode(&call.token_id),
             quant: call.quant,
             expected: call.expected,
         }
@@ -1915,35 +2073,41 @@ impl ExchangeTransactionContractRow {
 ORDER BY (ownerAddress, contractAddress, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
 */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct UpdateEnergyLimitContractRow {
+    #[serde(rename = "blockNum")]
     pub block_num: i64,
-    pub transaction_hash: Bytes,
+    #[serde(rename = "transactionHash")]
+    pub transaction_hash: String,
+    #[serde(rename = "transactionIndex")]
     pub transaction_index: i64,
+    #[serde(rename = "contractIndex")]
     pub contract_index: i64,
 
-    pub owner_address: Bytes,
-    pub contract_address: Bytes,
+    #[serde(rename = "ownerAddress")]
+    pub owner_address: String,
+    #[serde(rename = "contractAddress")]
+    pub contract_address: String,
+    #[serde(rename = "originEnergyLimit")]
     pub origin_energy_limit: i64,
 }
 
 impl UpdateEnergyLimitContractRow {
     pub fn from_grpc(
         block_num: i64,
-        transaction_hash: Vec<u8>,
+        transaction_hash: String,
         transaction_index: i64,
         contract_index: i64,
         call: &UpdateEnergyLimitContract,
     ) -> Self {
         Self {
             block_num,
-            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_hash: hex::encode(&transaction_hash),
             transaction_index,
             contract_index,
 
-            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
-            contract_address: len_20_addr_from_any_vec(call.contract_address.clone()),
+            owner_address: format_tron_address(call.owner_address.clone()),
+            contract_address: format_tron_address(call.contract_address.clone()),
             origin_energy_limit: call.origin_energy_limit,
         }
     }
@@ -1986,52 +2150,70 @@ impl UpdateEnergyLimitContractRow {
 ORDER BY (ownerAddress, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192, allow_nullable_key=1;
 */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct AccountPermissionUpdateContractRow {
+    #[serde(rename = "blockNum")]
     pub block_num: i64,
-    pub transaction_hash: Bytes,
+    #[serde(rename = "transactionHash")]
+    pub transaction_hash: String,
+    #[serde(rename = "transactionIndex")]
     pub transaction_index: i64,
+    #[serde(rename = "contractIndex")]
     pub contract_index: i64,
 
-    pub owner_address: Bytes,
+    #[serde(rename = "ownerAddress")]
+    pub owner_address: String,
 
+    #[serde(rename = "ownerPermissionType")]
     pub owner_permission_type: Option<i32>,
+    #[serde(rename = "ownerPermissionId")]
     pub owner_permission_id: Option<i32>,
+    #[serde(rename = "ownerPermissionName")]
     pub owner_permission_name: Option<String>,
+    #[serde(rename = "ownerThreshold")]
     pub owner_threshold: Option<i64>,
+    #[serde(rename = "ownerParentId")]
     pub owner_parent_id: Option<i32>,
-    pub owner_keys: HashMap<Bytes, i64>,
-    pub owner_operations: Bytes,
+    #[serde(rename = "ownerKeys")]
+    pub owner_keys: HashMap<String, i64>,
+    #[serde(rename = "ownerOperations")]
+    pub owner_operations: String,
 
+    #[serde(rename = "witnessPermissionType")]
     pub witness_permission_type: Option<i32>,
+    #[serde(rename = "witnessPermissionId")]
     pub witness_permission_id: Option<i32>,
+    #[serde(rename = "witnessPermissionName")]
     pub witness_permission_name: Option<String>,
+    #[serde(rename = "witnessThreshold")]
     pub witness_threshold: Option<i64>,
+    #[serde(rename = "witnessParentId")]
     pub witness_parent_id: Option<i32>,
-    pub witness_keys: HashMap<Bytes, i64>,
-    pub witness_operations: Bytes,
+    #[serde(rename = "witnessKeys")]
+    pub witness_keys: HashMap<String, i64>,
+    #[serde(rename = "witnessOperations")]
+    pub witness_operations: String,
 
-    #[klickhouse(rename = "actives.permissionType")]
+    #[serde(rename = "actives.permissionType")]
     pub actives_permission_type: Vec<i32>,
-    #[klickhouse(rename = "actives.permissionId")]
+    #[serde(rename = "actives.permissionId")]
     pub actives_permission_id: Vec<i32>,
-    #[klickhouse(rename = "actives.permissionName")]
+    #[serde(rename = "actives.permissionName")]
     pub actives_permission_name: Vec<String>,
-    #[klickhouse(rename = "actives.threshold")]
+    #[serde(rename = "actives.threshold")]
     pub actives_threshold: Vec<i64>,
-    #[klickhouse(rename = "actives.parentId")]
+    #[serde(rename = "actives.parentId")]
     pub actives_parent_id: Vec<i32>,
-    #[klickhouse(rename = "actives.keys")]
-    pub actives_keys: Vec<HashMap<Bytes, i64>>,
-    #[klickhouse(rename = "actives.operations")]
-    pub actives_operations: Vec<Bytes>,
+    #[serde(rename = "actives.keys")]
+    pub actives_keys: Vec<HashMap<String, i64>>,
+    #[serde(rename = "actives.operations")]
+    pub actives_operations: Vec<String>,
 }
 
 impl AccountPermissionUpdateContractRow {
     pub fn from_grpc(
         block_num: i64,
-        transaction_hash: Vec<u8>,
+        transaction_hash: String,
         transaction_index: i64,
         contract_index: i64,
         call: &AccountPermissionUpdateContract,
@@ -2052,7 +2234,7 @@ impl AccountPermissionUpdateContractRow {
                         .clone()
                         .into_iter()
                         .fold(HashMap::default(), |mut keys, key| {
-                            keys.insert(len_20_addr_from_any_vec(key.address), key.weight);
+                            keys.insert(format_tron_address(key.address), key.weight);
                             keys
                         });
                 (
@@ -2062,7 +2244,7 @@ impl AccountPermissionUpdateContractRow {
                     Some(owner.threshold),
                     Some(owner.parent_id),
                     keys,
-                    Bytes(owner.operations.clone()),
+                    hex::encode(&owner.operations),
                 )
             }
             None => (
@@ -2072,7 +2254,7 @@ impl AccountPermissionUpdateContractRow {
                 None,
                 None,
                 HashMap::default(),
-                Bytes::default(),
+                String::new(),
             ),
         };
 
@@ -2090,7 +2272,7 @@ impl AccountPermissionUpdateContractRow {
                     let keys = witness.keys.clone().into_iter().fold(
                         HashMap::default(),
                         |mut keys, key| {
-                            keys.insert(len_20_addr_from_any_vec(key.address), key.weight);
+                            keys.insert(format_tron_address(key.address), key.weight);
                             keys
                         },
                     );
@@ -2101,7 +2283,7 @@ impl AccountPermissionUpdateContractRow {
                         Some(witness.threshold),
                         Some(witness.parent_id),
                         keys,
-                        Bytes(witness.operations.clone()),
+                        hex::encode(&witness.operations),
                     )
                 }
                 None => (
@@ -2111,7 +2293,7 @@ impl AccountPermissionUpdateContractRow {
                     None,
                     None,
                     HashMap::default(),
-                    Bytes::default(),
+                    String::new(),
                 ),
             };
 
@@ -2147,7 +2329,7 @@ impl AccountPermissionUpdateContractRow {
                     let keys = active.keys.clone().into_iter().fold(
                         HashMap::default(),
                         |mut keys, key| {
-                            keys.insert(len_20_addr_from_any_vec(key.address), key.weight);
+                            keys.insert(format_tron_address(key.address), key.weight);
                             keys
                         },
                     );
@@ -2157,7 +2339,7 @@ impl AccountPermissionUpdateContractRow {
                     actives_threshold.push(active.threshold);
                     actives_parent_id.push(active.parent_id);
                     actives_keys.push(keys);
-                    actives_operations.push(Bytes(active.operations.clone()));
+                    actives_operations.push(hex::encode(&active.operations));
                     (
                         actives_permission_type,
                         actives_permission_id,
@@ -2172,10 +2354,10 @@ impl AccountPermissionUpdateContractRow {
 
         Self {
             block_num,
-            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_hash: hex::encode(&transaction_hash),
             transaction_index,
             contract_index,
-            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
+            owner_address: format_tron_address(call.owner_address.clone()),
 
             owner_permission_id,
             owner_permission_type,
@@ -2216,33 +2398,38 @@ impl AccountPermissionUpdateContractRow {
 ORDER BY (ownerAddress, contractAddress, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
 */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct ClearAbiContractRow {
+    #[serde(rename = "blockNum")]
     pub block_num: i64,
-    pub transaction_hash: Bytes,
+    #[serde(rename = "transactionHash")]
+    pub transaction_hash: String,
+    #[serde(rename = "transactionIndex")]
     pub transaction_index: i64,
+    #[serde(rename = "contractIndex")]
     pub contract_index: i64,
 
-    pub owner_address: Bytes,
-    pub contract_address: Bytes,
+    #[serde(rename = "ownerAddress")]
+    pub owner_address: String,
+    #[serde(rename = "contractAddress")]
+    pub contract_address: String,
 }
 
 impl ClearAbiContractRow {
     pub fn from_grpc(
         block_num: i64,
-        transaction_hash: Vec<u8>,
+        transaction_hash: String,
         transaction_index: i64,
         contract_index: i64,
         call: &ClearAbiContract,
     ) -> Self {
         Self {
             block_num,
-            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_hash: hex::encode(&transaction_hash),
             transaction_index,
             contract_index,
-            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
-            contract_address: len_20_addr_from_any_vec(call.contract_address.clone()),
+            owner_address: format_tron_address(call.owner_address.clone()),
+            contract_address: format_tron_address(call.contract_address.clone()),
         }
     }
 }
@@ -2259,32 +2446,36 @@ impl ClearAbiContractRow {
 ORDER BY (ownerAddress, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
 */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct UpdateBrokerageContractRow {
+    #[serde(rename = "blockNum")]
     pub block_num: i64,
-    pub transaction_hash: Bytes,
+    #[serde(rename = "transactionHash")]
+    pub transaction_hash: String,
+    #[serde(rename = "transactionIndex")]
     pub transaction_index: i64,
+    #[serde(rename = "contractIndex")]
     pub contract_index: i64,
 
-    pub owner_address: Bytes,
+    #[serde(rename = "ownerAddress")]
+    pub owner_address: String,
     pub brokerage: i32,
 }
 
 impl UpdateBrokerageContractRow {
     pub fn from_grpc(
         block_num: i64,
-        transaction_hash: Vec<u8>,
+        transaction_hash: String,
         transaction_index: i64,
         contract_index: i64,
         call: &UpdateBrokerageContract,
     ) -> Self {
         Self {
             block_num,
-            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_hash: hex::encode(&transaction_hash),
             transaction_index,
             contract_index,
-            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
+            owner_address: format_tron_address(call.owner_address.clone()),
             brokerage: call.brokerage,
         }
     }
@@ -2320,51 +2511,51 @@ impl UpdateBrokerageContractRow {
 ORDER BY (transparentFromAddress, transparentToAddress, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
 */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ShieldedTransferContractRow {
     pub block_num: i64,
-    pub transaction_hash: Bytes,
+    pub transaction_hash: String,
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub transparent_from_address: Bytes,
+    pub transparent_from_address: String,
     pub from_amount: i64,
-    #[klickhouse(rename = "spendDescription.valueCommitment")]
-    pub spend_description_value_commitment: Vec<Bytes>,
-    #[klickhouse(rename = "spendDescription.anchor")]
-    pub spend_description_anchor: Vec<Bytes>,
-    #[klickhouse(rename = "spendDescription.nullifier")]
-    pub spend_description_nullifier: Vec<Bytes>,
-    #[klickhouse(rename = "spendDescription.rk")]
-    pub spend_description_rk: Vec<Bytes>,
-    #[klickhouse(rename = "spendDescription.zkproof")]
-    pub spend_description_zkproof: Vec<Bytes>,
-    #[klickhouse(rename = "spendDescription.authoritySignature")]
-    pub spend_description_authority_signature: Vec<Bytes>,
+    #[serde(rename = "spendDescription.valueCommitment")]
+    pub spend_description_value_commitment: Vec<String>,
+    #[serde(rename = "spendDescription.anchor")]
+    pub spend_description_anchor: Vec<String>,
+    #[serde(rename = "spendDescription.nullifier")]
+    pub spend_description_nullifier: Vec<String>,
+    #[serde(rename = "spendDescription.rk")]
+    pub spend_description_rk: Vec<String>,
+    #[serde(rename = "spendDescription.zkproof")]
+    pub spend_description_zkproof: Vec<String>,
+    #[serde(rename = "spendDescription.authoritySignature")]
+    pub spend_description_authority_signature: Vec<String>,
 
-    #[klickhouse(rename = "receiveDescription.valueCommitment")]
-    pub receive_description_value_commitment: Vec<Bytes>,
-    #[klickhouse(rename = "receiveDescription.noteCommitment")]
-    pub receive_description_note_commitment: Vec<Bytes>,
-    #[klickhouse(rename = "receiveDescription.epk")]
-    pub receive_description_epk: Vec<Bytes>,
-    #[klickhouse(rename = "receiveDescription.cEnc")]
-    pub receive_description_c_enc: Vec<Bytes>,
-    #[klickhouse(rename = "receiveDescription.cOut")]
-    pub receive_description_c_out: Vec<Bytes>,
-    #[klickhouse(rename = "receiveDescription.zkproof")]
-    pub receive_description_zkproof: Vec<Bytes>,
+    #[serde(rename = "receiveDescription.valueCommitment")]
+    pub receive_description_value_commitment: Vec<String>,
+    #[serde(rename = "receiveDescription.noteCommitment")]
+    pub receive_description_note_commitment: Vec<String>,
+    #[serde(rename = "receiveDescription.epk")]
+    pub receive_description_epk: Vec<String>,
+    #[serde(rename = "receiveDescription.cEnc")]
+    pub receive_description_c_enc: Vec<String>,
+    #[serde(rename = "receiveDescription.cOut")]
+    pub receive_description_c_out: Vec<String>,
+    #[serde(rename = "receiveDescription.zkproof")]
+    pub receive_description_zkproof: Vec<String>,
 
-    pub binding_signature: Bytes,
-    pub transparent_to_address: Bytes,
+    pub binding_signature: String,
+    pub transparent_to_address: String,
     pub to_amount: i64,
 }
 
 impl ShieldedTransferContractRow {
     pub fn from_grpc(
         block_num: i64,
-        transaction_hash: Vec<u8>,
+        transaction_hash: String,
         transaction_index: i64,
         contract_index: i64,
         call: &ShieldedTransferContract,
@@ -2394,14 +2585,27 @@ impl ShieldedTransferContractRow {
                 mut spend_description_authority_signature,
             ),
              spend_description| {
-                spend_description_value_commitment
-                    .push(klickhouse::Bytes(spend_description.value_commitment));
-                spend_description_anchor.push(klickhouse::Bytes(spend_description.anchor));
-                spend_description_nullifier.push(klickhouse::Bytes(spend_description.nullifier));
-                spend_description_rk.push(klickhouse::Bytes(spend_description.rk));
-                spend_description_zkproof.push(klickhouse::Bytes(spend_description.zkproof));
-                spend_description_authority_signature.push(klickhouse::Bytes(
-                    spend_description.spend_authority_signature,
+                spend_description_value_commitment.push(utils::bytes_to_tron_format(
+                    &spend_description.value_commitment,
+                    false,
+                ));
+                spend_description_anchor.push(utils::bytes_to_tron_format(
+                    &spend_description.anchor,
+                    false,
+                ));
+                spend_description_nullifier.push(utils::bytes_to_tron_format(
+                    &spend_description.nullifier,
+                    false,
+                ));
+                spend_description_rk
+                    .push(utils::bytes_to_tron_format(&spend_description.rk, false));
+                spend_description_zkproof.push(utils::bytes_to_tron_format(
+                    &spend_description.zkproof,
+                    false,
+                ));
+                spend_description_authority_signature.push(utils::bytes_to_tron_format(
+                    &spend_description.spend_authority_signature,
+                    false,
                 ));
                 (
                     spend_description_value_commitment,
@@ -2439,14 +2643,28 @@ impl ShieldedTransferContractRow {
                 mut receive_description_zkproof,
             ),
              receive_description| {
-                receive_description_value_commitment
-                    .push(klickhouse::Bytes(receive_description.value_commitment));
-                receive_description_note_commitment
-                    .push(klickhouse::Bytes(receive_description.note_commitment));
-                receive_description_epk.push(klickhouse::Bytes(receive_description.epk));
-                receive_description_c_enc.push(klickhouse::Bytes(receive_description.c_enc));
-                receive_description_c_out.push(klickhouse::Bytes(receive_description.c_out));
-                receive_description_zkproof.push(klickhouse::Bytes(receive_description.zkproof));
+                receive_description_value_commitment.push(utils::bytes_to_tron_format(
+                    &receive_description.value_commitment,
+                    false,
+                ));
+                receive_description_note_commitment.push(utils::bytes_to_tron_format(
+                    &receive_description.note_commitment,
+                    false,
+                ));
+                receive_description_epk
+                    .push(utils::bytes_to_tron_format(&receive_description.epk, false));
+                receive_description_c_enc.push(utils::bytes_to_tron_format(
+                    &receive_description.c_enc,
+                    false,
+                ));
+                receive_description_c_out.push(utils::bytes_to_tron_format(
+                    &receive_description.c_out,
+                    false,
+                ));
+                receive_description_zkproof.push(utils::bytes_to_tron_format(
+                    &receive_description.zkproof,
+                    false,
+                ));
                 (
                     receive_description_value_commitment,
                     receive_description_note_commitment,
@@ -2460,11 +2678,12 @@ impl ShieldedTransferContractRow {
 
         Self {
             block_num,
-            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_hash,
             transaction_index,
             contract_index,
-            transparent_from_address: len_20_addr_from_any_vec(
-                call.transparent_from_address.clone(),
+            transparent_from_address: utils::bytes_to_tron_format(
+                &call.transparent_from_address.clone(),
+                true,
             ),
             from_amount: call.from_amount,
             spend_description_value_commitment,
@@ -2479,8 +2698,11 @@ impl ShieldedTransferContractRow {
             receive_description_c_enc,
             receive_description_c_out,
             receive_description_zkproof,
-            binding_signature: klickhouse::Bytes(call.binding_signature.clone()),
-            transparent_to_address: len_20_addr_from_any_vec(call.transparent_to_address.clone()),
+            binding_signature: utils::bytes_to_tron_format(&call.binding_signature.clone(), false),
+            transparent_to_address: utils::bytes_to_tron_format(
+                &call.transparent_to_address.clone(),
+                true,
+            ),
             to_amount: call.to_amount,
         }
     }
@@ -2501,38 +2723,38 @@ impl ShieldedTransferContractRow {
 ORDER BY (ownerAddress, sellTokenId, buyTokenId, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
 */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MarketSellAssetContractRow {
     pub block_num: i64,
-    pub transaction_hash: Bytes,
+    pub transaction_hash: String,
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub owner_address: Bytes,
-    pub sell_token_id: Bytes,
+    pub owner_address: String,
+    pub sell_token_id: String,
     pub sell_token_quantity: i64,
-    pub buy_token_id: Bytes,
+    pub buy_token_id: String,
     pub buy_token_quantity: i64,
 }
 
 impl MarketSellAssetContractRow {
     pub fn from_grpc(
         block_num: i64,
-        transaction_hash: Vec<u8>,
+        transaction_hash: String,
         transaction_index: i64,
         contract_index: i64,
         call: &MarketSellAssetContract,
     ) -> Self {
         Self {
             block_num,
-            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_hash,
             transaction_index,
             contract_index,
-            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
-            sell_token_id: klickhouse::Bytes(call.sell_token_id.clone()),
+            owner_address: utils::bytes_to_tron_format(&call.owner_address, true),
+            sell_token_id: utils::bytes_to_tron_format(&call.sell_token_id, false),
             sell_token_quantity: call.sell_token_quantity,
-            buy_token_id: klickhouse::Bytes(call.buy_token_id.clone()),
+            buy_token_id: utils::bytes_to_tron_format(&call.buy_token_id, false),
             buy_token_quantity: call.buy_token_quantity,
         }
     }
@@ -2550,34 +2772,34 @@ impl MarketSellAssetContractRow {
 ORDER BY (ownerAddress, orderId, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
 */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MarketCancelOrderContractRow {
     pub block_num: i64,
-    pub transaction_hash: Bytes,
+    pub transaction_hash: String,
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub owner_address: Bytes,
-    pub order_id: Bytes,
+    pub owner_address: String,
+    pub order_id: String,
 }
 
 impl MarketCancelOrderContractRow {
     pub fn from_grpc(
         block_num: i64,
-        transaction_hash: Vec<u8>,
+        transaction_hash: String,
         transaction_index: i64,
         contract_index: i64,
         call: &MarketCancelOrderContract,
     ) -> Self {
         Self {
             block_num,
-            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_hash,
             transaction_index,
             contract_index,
 
-            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
-            order_id: klickhouse::Bytes(call.order_id.clone()),
+            owner_address: utils::bytes_to_tron_format(&call.owner_address, true),
+            order_id: utils::bytes_to_tron_format(&call.order_id, false),
         }
     }
 }
@@ -2595,15 +2817,15 @@ impl MarketCancelOrderContractRow {
 ORDER BY (ownerAddress, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
 */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FreezeBalanceV2ContractRow {
     pub block_num: i64,
-    pub transaction_hash: Bytes,
+    pub transaction_hash: String,
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub owner_address: Bytes,
+    pub owner_address: String,
     pub frozen_balance: i64,
     pub resource: i32,
 }
@@ -2611,18 +2833,18 @@ pub struct FreezeBalanceV2ContractRow {
 impl FreezeBalanceV2ContractRow {
     pub fn from_grpc(
         block_num: i64,
-        transaction_hash: Vec<u8>,
+        transaction_hash: String,
         transaction_index: i64,
         contract_index: i64,
         call: &FreezeBalanceV2Contract,
     ) -> Self {
         Self {
             block_num,
-            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_hash,
             transaction_index,
             contract_index,
 
-            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
+            owner_address: utils::bytes_to_tron_format(&call.owner_address, true),
             frozen_balance: call.frozen_balance,
             resource: call.resource,
         }
@@ -2643,15 +2865,15 @@ impl FreezeBalanceV2ContractRow {
 ORDER BY (blockNum, ownerAddress, resource, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
 */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UnfreezeBalanceV2ContractRow {
     pub block_num: i64,
-    pub transaction_hash: Bytes,
+    pub transaction_hash: String,
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub owner_address: Bytes,
+    pub owner_address: String,
     pub unfreeze_balance: i64,
     pub resource: i32,
 }
@@ -2659,18 +2881,18 @@ pub struct UnfreezeBalanceV2ContractRow {
 impl UnfreezeBalanceV2ContractRow {
     pub fn from_grpc(
         block_num: i64,
-        transaction_hash: Vec<u8>,
+        transaction_hash: String,
         transaction_index: i64,
         contract_index: i64,
         call: &UnfreezeBalanceV2Contract,
     ) -> Self {
         Self {
             block_num,
-            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_hash,
             transaction_index,
             contract_index,
 
-            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
+            owner_address: utils::bytes_to_tron_format(&call.owner_address, true),
             unfreeze_balance: call.unfreeze_balance,
             resource: call.resource,
         }
@@ -2689,31 +2911,31 @@ impl UnfreezeBalanceV2ContractRow {
 ORDER BY (ownerAddress, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
 */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WithdrawExpireUnfreezeContractRow {
     pub block_num: i64,
-    pub transaction_hash: Bytes,
+    pub transaction_hash: String,
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub owner_address: Bytes,
+    pub owner_address: String,
 }
 
 impl WithdrawExpireUnfreezeContractRow {
     pub fn from_grpc(
         block_num: i64,
-        transaction_hash: Vec<u8>,
+        transaction_hash: String,
         transaction_index: i64,
         contract_index: i64,
         call: &WithdrawExpireUnfreezeContract,
     ) -> Self {
         Self {
             block_num,
-            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_hash,
             transaction_index,
             contract_index,
-            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
+            owner_address: utils::bytes_to_tron_format(&call.owner_address, true),
         }
     }
 }
@@ -2735,18 +2957,18 @@ impl WithdrawExpireUnfreezeContractRow {
 ORDER BY (ownerAddress, resource, receiverAddress, lock, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
 */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DelegateResourceContractRow {
     pub block_num: i64,
-    pub transaction_hash: Bytes,
+    pub transaction_hash: String,
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub owner_address: Bytes,
+    pub owner_address: String,
     pub resource: i32,
     pub balance: i64,
-    pub receiver_address: Bytes,
+    pub receiver_address: String,
     pub lock: bool,
     pub lock_period: i64,
 }
@@ -2754,20 +2976,20 @@ pub struct DelegateResourceContractRow {
 impl DelegateResourceContractRow {
     pub fn from_grpc(
         block_num: i64,
-        transaction_hash: Vec<u8>,
+        transaction_hash: String,
         transaction_index: i64,
         contract_index: i64,
         call: &DelegateResourceContract,
     ) -> Self {
         Self {
             block_num,
-            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_hash,
             transaction_index,
             contract_index,
-            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
+            owner_address: utils::bytes_to_tron_format(&call.owner_address, true),
             resource: call.resource,
             balance: call.balance,
-            receiver_address: len_20_addr_from_any_vec(call.receiver_address.clone()),
+            receiver_address: utils::bytes_to_tron_format(&call.receiver_address, true),
             lock: call.lock,
             lock_period: call.lock_period,
         }
@@ -2789,37 +3011,37 @@ impl DelegateResourceContractRow {
 ORDER BY (ownerAddress, resource, receiverAddress, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
 */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UndelegateResourceContractRow {
     pub block_num: i64,
-    pub transaction_hash: Bytes,
+    pub transaction_hash: String,
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub owner_address: Bytes,
+    pub owner_address: String,
     pub resource: i32,
     pub balance: i64,
-    pub receiver_address: Bytes,
+    pub receiver_address: String,
 }
 
 impl UndelegateResourceContractRow {
     pub fn from_grpc(
         block_num: i64,
-        transaction_hash: Vec<u8>,
+        transaction_hash: String,
         transaction_index: i64,
         contract_index: i64,
         call: &UnDelegateResourceContract,
     ) -> Self {
         Self {
             block_num,
-            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_hash,
             transaction_index,
             contract_index,
-            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
+            owner_address: utils::bytes_to_tron_format(&call.owner_address, true),
             resource: call.resource,
             balance: call.balance,
-            receiver_address: len_20_addr_from_any_vec(call.receiver_address.clone()),
+            receiver_address: utils::bytes_to_tron_format(&call.receiver_address, true),
         }
     }
 }
@@ -2836,31 +3058,31 @@ impl UndelegateResourceContractRow {
 ORDER BY (ownerAddress, blockNum, transactionHash, contractIndex)
 SETTINGS index_granularity = 8192;
 */
-#[derive(Row, Documented, Clone, Debug, Default)]
-#[klickhouse(rename_all = "camelCase")]
+#[derive(Row, Documented, Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CancelAllUnfreezeV2ContractRow {
     pub block_num: i64,
-    pub transaction_hash: Bytes,
+    pub transaction_hash: String,
     pub transaction_index: i64,
     pub contract_index: i64,
 
-    pub owner_address: Bytes,
+    pub owner_address: String,
 }
 
 impl CancelAllUnfreezeV2ContractRow {
     pub fn from_grpc(
         block_num: i64,
-        transaction_hash: Vec<u8>,
+        transaction_hash: String,
         transaction_index: i64,
         contract_index: i64,
         call: &CancelAllUnfreezeV2Contract,
     ) -> Self {
         Self {
             block_num,
-            transaction_hash: klickhouse::Bytes(transaction_hash),
+            transaction_hash,
             transaction_index,
             contract_index,
-            owner_address: len_20_addr_from_any_vec(call.owner_address.clone()),
+            owner_address: utils::bytes_to_tron_format(&call.owner_address, true),
         }
     }
 }
