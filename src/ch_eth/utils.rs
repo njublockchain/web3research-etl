@@ -138,11 +138,14 @@ pub async fn create_provider(provider_url: &str) -> Result<EthProvider, Box<dyn 
     if is_ws_url(provider_url) {
         log::debug!("Creating WebSocket provider for URL: {}", provider_url);
         let provider = Provider::<Ws>::connect(provider_url).await?;
+        provider.get_block_number().await?;
         log::debug!("WebSocket connection established");
         Ok(EthProvider::Ws(provider))
     } else {
         log::debug!("Creating HTTP provider for URL: {}", provider_url);
         let provider = Provider::<Http>::try_from(provider_url)?;
+        // try
+        provider.get_block_number().await?;
         log::debug!("HTTP provider created");
         Ok(EthProvider::Http(provider))
     }

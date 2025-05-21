@@ -37,6 +37,8 @@ pub async fn insert_batch_data(
         inserter.end().await?;
     }
 
+    warn!("transaction rows: {}", transaction_rows.len());
+
     if !event_rows.is_empty() {
         let mut inserter = client.insert("events")?;
         for row in event_rows {
@@ -44,6 +46,8 @@ pub async fn insert_batch_data(
         }
         inserter.end().await?;
     }
+
+    warn!("event rows: {}", event_rows.len());
 
     if !withdraw_rows.is_empty() {
         let mut inserter = client.insert("withdrawals")?;
@@ -61,6 +65,8 @@ pub async fn insert_batch_data(
         inserter.end().await?;
     }
 
+    warn!("trace rows: {}", trace_rows.len());
+
     if !block_rows.is_empty() {
         let mut inserter = client.insert("blocks")?;
         for row in block_rows {
@@ -68,6 +74,8 @@ pub async fn insert_batch_data(
         }
         inserter.end().await?;
     }
+
+        warn!("block rows: {}", block_rows.len());
 
     Ok(())
 }
@@ -162,12 +170,29 @@ pub(crate) async fn init(
 ) -> Result<(), Box<dyn Error>> {
     // Create connection to ClickHouse using the official library
     let parsed_db_url = Url::parse(&db).unwrap();
-    let database = parsed_db_url.path()
-        .strip_prefix('/')
-        .unwrap_or("default");
+    if parsed_db_url.scheme() != "http" && parsed_db_url.scheme() != "https" {
+        return Err("Invalid ClickHouse URL scheme, must be http or https in V2".into());
+    }
+
+    let database = parsed_db_url.path().strip_prefix('/').unwrap_or("ethereum");
+    let clickhouse_database = if database.is_empty() {
+        "ethereum"
+    } else {
+        database
+    };
+    let clickhouse_url = format!(
+        "{}://{}:{}",
+        parsed_db_url.scheme(),
+        parsed_db_url.host_str().unwrap(),
+        parsed_db_url.port().unwrap_or(8123)
+    );
+    let clickhouse_username = parsed_db_url.username();
+    let clickhouse_password = parsed_db_url.password().unwrap_or("");
     let client = clickhouse::Client::default()
-        .with_url(&db)
-        .with_database(database);
+        .with_url(clickhouse_url)
+        .with_user(clickhouse_username)
+        .with_password(clickhouse_password)
+        .with_database(clickhouse_database);
 
     // Create provider directly based on URL type (WS or HTTP)
     let provider = create_provider(&provider_url).await?;
@@ -190,13 +215,16 @@ pub(crate) async fn init(
         None => None,
     };
 
-    debug!("start initializing schema");
+    info!("start initializing schema");
 
     // Create database if it doesn't exist
     client
-        .query(&format!("CREATE DATABASE IF NOT EXISTS {}", database))
+        .query("CREATE DATABASE IF NOT EXISTS ethereum;")
+        // .bind(database)
+        .with_option("wait_end_of_query", "1")
         .execute()
         .await?;
+    info!("database created");
 
     // Create tables using the SQL definitions from the code comments
     client.query(BlockRow::DOCS).execute().await?;
@@ -205,7 +233,7 @@ pub(crate) async fn init(
     client.query(WithdrawalRow::DOCS).execute().await?;
     client.query(TraceRow::DOCS).execute().await?;
 
-    debug!("schema initialized");
+    info!("schema initialized");
 
     let latest: u64 = provider.get_block_number().await?.as_u64();
     let to = latest / 1_000 * 1_000;
