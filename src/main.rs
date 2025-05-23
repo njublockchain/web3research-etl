@@ -5,8 +5,6 @@ mod ch_solana;
 
 use clap::Parser;
 use std::error::Error;
-use ethers::providers::{Http, Provider, Ws};
-use url::Url;
 
 extern crate pretty_env_logger;
 
@@ -131,7 +129,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             SupportedChainType::Bitcoin => {
                 let chain_name = "bitcoin";
                 let provider = provider.replace("[chain]", chain_name);
-                let trace_provider = trace_provider.map(|x| x.replace("[chain]", chain_name));
+                let _trace_provider = trace_provider.map(|x| x.replace("[chain]", chain_name));
 
                 ch_btc::init::init(db, provider, provider_type, from, batch).await?
             }
@@ -155,7 +153,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
             trace_provider,
             provider_type,
         } => match chain {
-            SupportedChainType::Bitcoin => todo!(),
+            SupportedChainType::Bitcoin => {
+                let chain_name = "bitcoin";
+                let provider = provider.replace("[chain]", chain_name);
+                let trace_provider = trace_provider.map(|x| x.replace("[chain]", chain_name));
+
+                ch_btc::sync::sync(db, provider, trace_provider, provider_type).await?
+            },
             SupportedChainType::Ethereum => {
                 let chain_name = "ethereum";
                 let provider = provider.replace("[chain]", chain_name);

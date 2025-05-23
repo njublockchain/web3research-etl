@@ -334,16 +334,16 @@ pub(crate) async fn init(
         let tx_infos = tx_infos.into_inner().transaction_info;
 
         let block_row = BlockRow::from_grpc(&block);
-        block_row_list.push(block_row);
+        block_row_list.push(block_row.clone());
 
         for (index, transaction) in block.transactions.iter().enumerate() {
             let transaction_row = if num == 0 {
-                TransactionRow::from_grpc(&block, index as i64, transaction, None)
+                TransactionRow::from_grpc(&block_row, index as i64, transaction, None)
             // handle genesis
             } else {
                 assert!(tx_infos[index].id == transaction.txid);
                 let transaction_row = TransactionRow::from_grpc(
-                    &block,
+                    &block_row,
                     index as i64,
                     transaction,
                     Some(&tx_infos[index]),
@@ -351,14 +351,14 @@ pub(crate) async fn init(
 
                 for (index, log) in tx_infos[index].log.iter().enumerate() {
                     let log_row =
-                        LogRow::from_grpc(num, transaction_row.hash.to_vec(), index as i32, log);
+                        LogRow::from_grpc(&block_row, &transaction_row, index as i32, log);
                     log_row_list.push(log_row);
                 }
 
                 for (index, internal) in tx_infos[index].internal_transactions.iter().enumerate() {
                     let internal_row = InternalTransactionRow::from_grpc(
-                        num,
-                        transaction_row.hash.to_vec(),
+                        &block_row,
+                        &transaction_row,
                         index as i32,
                         internal,
                     );
@@ -386,98 +386,53 @@ pub(crate) async fn init(
 
             if let Ok(msg) = parameter.to_msg::<AccountCreateContract>() {
                 parameter_parsed = true;
-                let row = AccountCreateContractRow::from_grpc(
-                    num,
-                    transaction.txid.clone(),
-                    index.try_into().unwrap(),
-                    0,
-                    &msg,
-                );
+                let row =
+                    AccountCreateContractRow::from_grpc(&block_row, &transaction_row, 0, &msg);
                 account_create_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<TransferContract>() {
                 parameter_parsed = true;
-                let row = TransferContractRow::from_grpc(
-                    num,
-                    transaction.txid.clone(),
-                    index.try_into().unwrap(),
-                    0,
-                    &msg,
-                );
+                let row = TransferContractRow::from_grpc(&block_row, &transaction_row, 0, &msg);
                 transfer_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<TransferAssetContract>() {
                 parameter_parsed = true;
-                let row = TransferAssetContractRow::from_grpc(
-                    num,
-                    transaction.txid.clone(),
-                    index.try_into().unwrap(),
-                    0,
-                    &msg,
-                );
+                let row =
+                    TransferAssetContractRow::from_grpc(&block_row, &transaction_row, 0, &msg);
                 transfer_asset_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<VoteAssetContract>() {
                 parameter_parsed = true;
-                let row = VoteAssetContractRow::from_grpc(
-                    num,
-                    transaction.txid.clone(),
-                    index.try_into().unwrap(),
-                    0,
-                    &msg,
-                );
+                let row = VoteAssetContractRow::from_grpc(&block_row, &transaction_row, 0, &msg);
                 vote_asset_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<VoteWitnessContract>() {
                 parameter_parsed = true;
-                let row = VoteWitnessContractRow::from_grpc(
-                    num,
-                    transaction.txid.clone(),
-                    index.try_into().unwrap(),
-                    0,
-                    &msg,
-                );
+                let row = VoteWitnessContractRow::from_grpc(&block_row, &transaction_row, 0, &msg);
                 vote_witness_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<WitnessCreateContract>() {
                 parameter_parsed = true;
-                let row = WitnessCreateContractRow::from_grpc(
-                    num,
-                    transaction.txid.clone(),
-                    index.try_into().unwrap(),
-                    0,
-                    &msg,
-                );
+                let row =
+                    WitnessCreateContractRow::from_grpc(&block_row, &transaction_row, 0, &msg);
                 witness_create_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<AssetIssueContract>() {
                 parameter_parsed = true;
-                let row = AssetIssueContractRow::from_grpc(
-                    num,
-                    transaction.txid.clone(),
-                    index.try_into().unwrap(),
-                    0,
-                    &msg,
-                );
+                let row = AssetIssueContractRow::from_grpc(&block_row, &transaction_row, 0, &msg);
                 asset_issue_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<WitnessUpdateContract>() {
                 parameter_parsed = true;
-                let row = WitnessUpdateContractRow::from_grpc(
-                    num,
-                    transaction.txid.clone(),
-                    index.try_into().unwrap(),
-                    0,
-                    &msg,
-                );
+                let row =
+                    WitnessUpdateContractRow::from_grpc(&block_row, &transaction_row, 0, &msg);
                 witness_update_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<ParticipateAssetIssueContract>() {
                 parameter_parsed = true;
                 let row = ParticipateAssetIssueContractRow::from_grpc(
-                    num,
-                    transaction.txid.clone(),
-                    index.try_into().unwrap(),
+                    &block_row,
+                    &transaction_row,
                     0,
                     &msg,
                 );
@@ -485,186 +440,101 @@ pub(crate) async fn init(
             }
             if let Ok(msg) = parameter.to_msg::<AccountUpdateContract>() {
                 parameter_parsed = true;
-                let row = AccountUpdateContractRow::from_grpc(
-                    num,
-                    transaction.txid.clone(),
-                    index.try_into().unwrap(),
-                    0,
-                    &msg,
-                );
+                let row =
+                    AccountUpdateContractRow::from_grpc(&block_row, &transaction_row, 0, &msg);
                 account_update_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<FreezeBalanceContract>() {
                 parameter_parsed = true;
-                let row = FreezeBalanceContractRow::from_grpc(
-                    num,
-                    transaction.txid.clone(),
-                    index.try_into().unwrap(),
-                    0,
-                    &msg,
-                );
+                let row =
+                    FreezeBalanceContractRow::from_grpc(&block_row, &transaction_row, 0, &msg);
                 freeze_balance_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<UnfreezeBalanceContract>() {
                 parameter_parsed = true;
-                let row = UnfreezeBalanceContractRow::from_grpc(
-                    num,
-                    transaction.txid.clone(),
-                    index.try_into().unwrap(),
-                    0,
-                    &msg,
-                );
+                let row =
+                    UnfreezeBalanceContractRow::from_grpc(&block_row, &transaction_row, 0, &msg);
                 unfreeze_balance_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<WithdrawBalanceContract>() {
                 parameter_parsed = true;
-                let row = WithdrawBalanceContractRow::from_grpc(
-                    num,
-                    transaction.txid.clone(),
-                    index.try_into().unwrap(),
-                    0,
-                    &msg,
-                );
+                let row =
+                    WithdrawBalanceContractRow::from_grpc(&block_row, &transaction_row, 0, &msg);
                 withdraw_balance_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<UnfreezeAssetContract>() {
                 parameter_parsed = true;
-                let row = UnfreezeAssetContractRow::from_grpc(
-                    num,
-                    transaction.txid.clone(),
-                    index.try_into().unwrap(),
-                    0,
-                    &msg,
-                );
+                let row =
+                    UnfreezeAssetContractRow::from_grpc(&block_row, &transaction_row, 0, &msg);
                 unfreeze_asset_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<UpdateAssetContract>() {
                 parameter_parsed = true;
-                let row = UpdateAssetContractRow::from_grpc(
-                    num,
-                    transaction.txid.clone(),
-                    index.try_into().unwrap(),
-                    0,
-                    &msg,
-                );
+                let row = UpdateAssetContractRow::from_grpc(&block_row, &transaction_row, 0, &msg);
                 update_asset_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<ProposalCreateContract>() {
                 parameter_parsed = true;
-                let row = ProposalCreateContractRow::from_grpc(
-                    num,
-                    transaction.txid.clone(),
-                    index.try_into().unwrap(),
-                    0,
-                    &msg,
-                );
+                let row =
+                    ProposalCreateContractRow::from_grpc(&block_row, &transaction_row, 0, &msg);
                 proposal_create_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<ProposalApproveContract>() {
                 parameter_parsed = true;
-                let row = ProposalApproveContractRow::from_grpc(
-                    num,
-                    transaction.txid.clone(),
-                    index.try_into().unwrap(),
-                    0,
-                    &msg,
-                );
+                let row =
+                    ProposalApproveContractRow::from_grpc(&block_row, &transaction_row, 0, &msg);
                 proposal_approve_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<ProposalDeleteContract>() {
                 parameter_parsed = true;
-                let row = ProposalDeleteContractRow::from_grpc(
-                    num,
-                    transaction.txid.clone(),
-                    index.try_into().unwrap(),
-                    0,
-                    &msg,
-                );
+                let row =
+                    ProposalDeleteContractRow::from_grpc(&block_row, &transaction_row, 0, &msg);
                 proposal_delete_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<SetAccountIdContract>() {
                 parameter_parsed = true;
-                let row = SetAccountIdContractRow::from_grpc(
-                    num,
-                    transaction.txid.clone(),
-                    index.try_into().unwrap(),
-                    0,
-                    &msg,
-                );
+                let row = SetAccountIdContractRow::from_grpc(&block_row, &transaction_row, 0, &msg);
                 set_account_id_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<CreateSmartContract>() {
                 parameter_parsed = true;
-                let row = CreateSmartContractRow::from_grpc(
-                    num,
-                    transaction.txid.clone(),
-                    index.try_into().unwrap(),
-                    0,
-                    &msg,
-                );
+                let row = CreateSmartContractRow::from_grpc(&block_row, &transaction_row, 0, &msg);
                 create_smart_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<TriggerSmartContract>() {
                 parameter_parsed = true;
-                let row = TriggerSmartContractRow::from_grpc(
-                    num,
-                    transaction.txid.clone(),
-                    index.try_into().unwrap(),
-                    0,
-                    &msg,
-                );
+                let row = TriggerSmartContractRow::from_grpc(&block_row, &transaction_row, 0, &msg);
                 trigger_smart_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<UpdateSettingContract>() {
                 parameter_parsed = true;
-                let row = UpdateSettingContractRow::from_grpc(
-                    num,
-                    transaction.txid.clone(),
-                    index.try_into().unwrap(),
-                    0,
-                    &msg,
-                );
+                let row =
+                    UpdateSettingContractRow::from_grpc(&block_row, &transaction_row, 0, &msg);
                 update_setting_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<ExchangeCreateContract>() {
                 parameter_parsed = true;
-                let row = ExchangeCreateContractRow::from_grpc(
-                    num,
-                    transaction.txid.clone(),
-                    index.try_into().unwrap(),
-                    0,
-                    &msg,
-                );
+                let row =
+                    ExchangeCreateContractRow::from_grpc(&block_row, &transaction_row, 0, &msg);
                 exchange_create_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<ExchangeInjectContract>() {
                 parameter_parsed = true;
-                let row = ExchangeInjectContractRow::from_grpc(
-                    num,
-                    transaction.txid.clone(),
-                    index.try_into().unwrap(),
-                    0,
-                    &msg,
-                );
+                let row =
+                    ExchangeInjectContractRow::from_grpc(&block_row, &transaction_row, 0, &msg);
                 exchange_inject_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<ExchangeWithdrawContract>() {
                 parameter_parsed = true;
-                let row = ExchangeWithdrawContractRow::from_grpc(
-                    num,
-                    transaction.txid.clone(),
-                    index.try_into().unwrap(),
-                    0,
-                    &msg,
-                );
+                let row =
+                    ExchangeWithdrawContractRow::from_grpc(&block_row, &transaction_row, 0, &msg);
                 exchange_withdraw_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<ExchangeTransactionContract>() {
                 parameter_parsed = true;
                 let row = ExchangeTransactionContractRow::from_grpc(
-                    num,
-                    transaction.txid.clone(),
-                    index.try_into().unwrap(),
+                    &block_row,
+                    &transaction_row,
                     0,
                     &msg,
                 );
@@ -672,21 +542,15 @@ pub(crate) async fn init(
             }
             if let Ok(msg) = parameter.to_msg::<UpdateEnergyLimitContract>() {
                 parameter_parsed = true;
-                let row = UpdateEnergyLimitContractRow::from_grpc(
-                    num,
-                    transaction.txid.clone(),
-                    index.try_into().unwrap(),
-                    0,
-                    &msg,
-                );
+                let row =
+                    UpdateEnergyLimitContractRow::from_grpc(&block_row, &transaction_row, 0, &msg);
                 update_energy_limit_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<AccountPermissionUpdateContract>() {
                 parameter_parsed = true;
                 let row = AccountPermissionUpdateContractRow::from_grpc(
-                    num,
-                    transaction.txid.clone(),
-                    index.try_into().unwrap(),
+                    &block_row,
+                    &transaction_row,
                     0,
                     &msg,
                 );
@@ -694,87 +558,50 @@ pub(crate) async fn init(
             }
             if let Ok(msg) = parameter.to_msg::<ClearAbiContract>() {
                 parameter_parsed = true;
-                let row = ClearAbiContractRow::from_grpc(
-                    num,
-                    transaction.txid.clone(),
-                    index.try_into().unwrap(),
-                    0,
-                    &msg,
-                );
+                let row = ClearAbiContractRow::from_grpc(&block_row, &transaction_row, 0, &msg);
                 clear_abi_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<UpdateBrokerageContract>() {
                 parameter_parsed = true;
-                let row = UpdateBrokerageContractRow::from_grpc(
-                    num,
-                    transaction.txid.clone(),
-                    index.try_into().unwrap(),
-                    0,
-                    &msg,
-                );
+                let row =
+                    UpdateBrokerageContractRow::from_grpc(&block_row, &transaction_row, 0, &msg);
                 update_brokerage_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<ShieldedTransferContract>() {
                 parameter_parsed = true;
-                let row = ShieldedTransferContractRow::from_grpc(
-                    num,
-                    transaction.txid.clone(),
-                    index.try_into().unwrap(),
-                    0,
-                    &msg,
-                );
+                let row =
+                    ShieldedTransferContractRow::from_grpc(&block_row, &transaction_row, 0, &msg);
                 shielded_transfer_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<MarketSellAssetContract>() {
                 parameter_parsed = true;
-                let row = MarketSellAssetContractRow::from_grpc(
-                    num,
-                    transaction.txid.clone(),
-                    index.try_into().unwrap(),
-                    0,
-                    &msg,
-                );
+                let row =
+                    MarketSellAssetContractRow::from_grpc(&block_row, &transaction_row, 0, &msg);
                 market_sell_asset_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<MarketCancelOrderContract>() {
                 parameter_parsed = true;
-                let row = MarketCancelOrderContractRow::from_grpc(
-                    num,
-                    transaction.txid.clone(),
-                    index.try_into().unwrap(),
-                    0,
-                    &msg,
-                );
+                let row =
+                    MarketCancelOrderContractRow::from_grpc(&block_row, &transaction_row, 0, &msg);
                 market_cancel_order_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<FreezeBalanceV2Contract>() {
                 parameter_parsed = true;
-                let row = FreezeBalanceV2ContractRow::from_grpc(
-                    num,
-                    transaction.txid.clone(),
-                    index.try_into().unwrap(),
-                    0,
-                    &msg,
-                );
+                let row =
+                    FreezeBalanceV2ContractRow::from_grpc(&block_row, &transaction_row, 0, &msg);
                 freeze_balance_v2_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<UnfreezeBalanceV2Contract>() {
                 parameter_parsed = true;
-                let row = UnfreezeBalanceV2ContractRow::from_grpc(
-                    num,
-                    transaction.txid.clone(),
-                    index.try_into().unwrap(),
-                    0,
-                    &msg,
-                );
+                let row =
+                    UnfreezeBalanceV2ContractRow::from_grpc(&block_row, &transaction_row, 0, &msg);
                 unfreeze_balance_v2_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<WithdrawExpireUnfreezeContract>() {
                 parameter_parsed = true;
                 let row = WithdrawExpireUnfreezeContractRow::from_grpc(
-                    num,
-                    transaction.txid.clone(),
-                    index.try_into().unwrap(),
+                    &block_row,
+                    &transaction_row,
                     0,
                     &msg,
                 );
@@ -782,32 +609,21 @@ pub(crate) async fn init(
             }
             if let Ok(msg) = parameter.to_msg::<DelegateResourceContract>() {
                 parameter_parsed = true;
-                let row = DelegateResourceContractRow::from_grpc(
-                    num,
-                    transaction.txid.clone(),
-                    index.try_into().unwrap(),
-                    0,
-                    &msg,
-                );
+                let row =
+                    DelegateResourceContractRow::from_grpc(&block_row, &transaction_row, 0, &msg);
                 delegate_resource_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<UnDelegateResourceContract>() {
                 parameter_parsed = true;
-                let row = UndelegateResourceContractRow::from_grpc(
-                    num,
-                    transaction.txid.clone(),
-                    index.try_into().unwrap(),
-                    0,
-                    &msg,
-                );
+                let row =
+                    UndelegateResourceContractRow::from_grpc(&block_row, &transaction_row, 0, &msg);
                 undelegate_resource_contract_row_list.push(row);
             }
             if let Ok(msg) = parameter.to_msg::<CancelAllUnfreezeV2Contract>() {
                 parameter_parsed = true;
                 let row = CancelAllUnfreezeV2ContractRow::from_grpc(
-                    num,
-                    transaction.txid.clone(),
-                    index.try_into().unwrap(),
+                    &block_row,
+                    &transaction_row,
                     0,
                     &msg,
                 );
@@ -816,7 +632,10 @@ pub(crate) async fn init(
 
             //TODO: add CustomContract and GetContract (useless)
             if !parameter_parsed {
-                warn!("unknown contract type: {:?} {:X?}", parameter.type_url, transaction.txid);
+                warn!(
+                    "unknown contract type: {:?} {:X?}",
+                    parameter.type_url, transaction.txid
+                );
             }
 
             transaction_row_list.push(transaction_row);
@@ -824,10 +643,6 @@ pub(crate) async fn init(
 
         if (num - from + 1) % batch == 0 {
             tokio::try_join!(
-                klient.insert_native_block(
-                    "INSERT INTO blocks FORMAT native",
-                    block_row_list.to_vec()
-                ),
                 klient.insert_native_block(
                     "INSERT INTO transactions FORMAT native",
                     transaction_row_list.to_vec()
@@ -996,6 +811,11 @@ pub(crate) async fn init(
                 )
             )
             .unwrap();
+
+            // intentionally insert blocks after other tables
+            klient
+                .insert_native_block("INSERT INTO blocks FORMAT native", block_row_list.to_vec())
+                .await?;
 
             block_row_list.clear();
             transaction_row_list.clear();

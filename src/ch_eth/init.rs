@@ -5,7 +5,7 @@ use ethers::{
     providers::ProviderError,
     types::{Block, Transaction, TransactionReceipt},
 };
-use log::{debug, error, info, warn};
+use log::{error, info, warn};
 use tokio_retry::{
     strategy::{jitter, ExponentialBackoff},
     Retry,
@@ -14,7 +14,7 @@ use url::Url;
 
 use crate::{
     ch_eth::{
-        schema::{BlockRow, EventRow, TraceRow, TransactionRow, WithdrawalRow},
+        schema::{AccessListItemRow, BlockRow, EventRow, TraceRow, TransactionRow, WithdrawalRow},
         utils::{create_provider, EthProvider},
     },
     ProviderType,
@@ -119,7 +119,7 @@ pub(crate) async fn init(
                 .path()
                 .to_string()
                 .strip_prefix('/')
-                .unwrap()
+                .unwrap_or("default")
                 .to_string(),
         }
     } else {
@@ -157,7 +157,7 @@ pub(crate) async fn init(
         None => None,
     };
 
-    debug!("start initializing schema");
+    info!("Start ensuring database and tables exist");
     klient
         .execute(format!("CREATE DATABASE IF NOT EXISTS {}", options.default_database).as_str())
         .await
@@ -165,14 +165,14 @@ pub(crate) async fn init(
     klient.execute(BlockRow::DOCS).await.unwrap();
     klient.execute(TransactionRow::DOCS).await.unwrap();
     klient.execute(EventRow::DOCS).await.unwrap();
+    klient.execute(AccessListItemRow::DOCS).await.unwrap();
     klient.execute(WithdrawalRow::DOCS).await.unwrap();
     klient.execute(TraceRow::DOCS).await.unwrap();
-    debug!("schema initialized");
 
     let latest: u64 = provider.get_block_number().await?.as_u64();
     let to = latest / 1_000 * 1_000;
 
-    warn!("target: {}", to);
+    warn!("Initializing blocks from {} to {}", from, to);
 
     let retry_strategy = ExponentialBackoff::from_millis(100)
         .map(jitter) // add jitter to delays
@@ -180,6 +180,7 @@ pub(crate) async fn init(
 
     let mut block_row_list = Vec::with_capacity((batch + 1_u64) as usize);
     let mut transaction_row_list = Vec::new();
+    let mut access_list_item_row_list = Vec::new();
     let mut event_row_list = Vec::new();
     let mut withdraw_row_list = Vec::new();
 
@@ -207,6 +208,18 @@ pub(crate) async fn init(
             let transaction_row = TransactionRow::from_ethers(block, transaction, receipt);
             transaction_row_list.push(transaction_row);
 
+            if let Some(access_list) = &transaction.access_list {
+                for (index, access_list_item) in access_list.0.iter().enumerate() {
+                    let access_list_item_row = AccessListItemRow::from_ethers(
+                        block,
+                        transaction,
+                        index.try_into().unwrap(),
+                        access_list_item,
+                    );
+                    access_list_item_row_list.push(access_list_item_row);
+                }
+            }
+
             for log in &receipt.logs {
                 let event_row = EventRow::from_ethers(block, transaction, log);
                 event_row_list.push(event_row);
@@ -227,12 +240,8 @@ pub(crate) async fn init(
             }
         }
 
-        if (num - from + 1) % batch == 0 {
+        if (num - from + 1) % batch == 0 || num == to {
             tokio::try_join!(
-                klient.insert_native_block(
-                    "INSERT INTO blocks FORMAT native",
-                    block_row_list.to_vec()
-                ),
                 klient.insert_native_block(
                     "INSERT INTO transactions FORMAT native",
                     transaction_row_list.to_vec()
@@ -252,28 +261,20 @@ pub(crate) async fn init(
             )
             .unwrap();
 
+            klient
+                .insert_native_block("INSERT INTO blocks FORMAT native", block_row_list.to_vec())
+                .await
+                .unwrap();
+
+            warn!("Inserted blocks from {} to {}, with {} transactions, {} access_list_items, {} events, {} withdraws, {} traces", num-batch+1, num, transaction_row_list.len(), access_list_item_row_list.len(), event_row_list.len(), withdraw_row_list.len(), trace_row_list.len());
+
             block_row_list.clear();
             transaction_row_list.clear();
+            access_list_item_row_list.clear();
             event_row_list.clear();
             withdraw_row_list.clear();
-
-            info!("{} done blocks & txs", num)
+            trace_row_list.clear();
         }
-
-        tokio::try_join!(
-            klient.insert_native_block("INSERT INTO blocks FORMAT native", block_row_list.to_vec()),
-            klient.insert_native_block(
-                "INSERT INTO transactions FORMAT native",
-                transaction_row_list.to_vec()
-            ),
-            klient.insert_native_block("INSERT INTO events FORMAT native", event_row_list.to_vec()),
-            klient.insert_native_block(
-                "INSERT INTO withdraws FORMAT native",
-                withdraw_row_list.to_vec()
-            ),
-            klient.insert_native_block("INSERT INTO traces FORMAT native", trace_row_list.to_vec())
-        )
-        .unwrap();
     }
 
     Ok(())

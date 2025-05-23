@@ -1,20 +1,19 @@
 use std::error::Error;
 
-use bitcoin::{hashes::Hash, Address};
+use bitcoin::{hashes::Hash};
 use bitcoincore_rpc::RpcApi;
-use klickhouse::{Client, ClientOptions, Row};
+use klickhouse::{Client, Row};
 use log::{debug, info, warn};
 use url::Url;
 
 use crate::{
-    ch_btc::schema::{BlockRow, InputRow, OutputRow},
-    ProviderType, ch_btc::sync::health_check,
+    ch_btc::sync::insert_block, ProviderType
 };
 
 pub(crate) async fn check(
     db: String,
     provider_uri: String,
-    trace_provider_uri: Option<String>,
+    _trace_provider_uri: Option<String>,
     provider_type: ProviderType,
     from: u64,
 ) -> Result<(), Box<dyn Error>> {
@@ -77,4 +76,61 @@ pub(crate) async fn check(
     }
 
     Ok(())
+}
+
+
+#[derive(Row, Clone, Debug)]
+struct BlockHashRow {
+    hash: String,
+}
+
+pub async fn health_check(
+    client: Client,
+    provider: &bitcoincore_rpc::Client,
+    trace_provider: &Option<&bitcoincore_rpc::Client>,
+    provider_type: ProviderType,
+    num: u64,
+) {
+    let block = client
+        .query_one::<BlockHashRow>(format!(
+            "SELECT hash FROM blocks WHERE height = {}",
+            num
+        ))
+        .await;
+    if block.is_err() {
+        warn!("add missing block: {}, {:?}", num, block);
+        insert_block(&client, provider, trace_provider, provider_type, num)
+            .await
+            .unwrap();
+    } else {
+        let block_hash_on_store = block.unwrap().hash;
+        let block_hash_on_chain = hex::encode(provider.get_block_hash(num).unwrap().as_byte_array());
+
+        if block_hash_on_store != block_hash_on_chain {
+            warn!(
+                "fix err block {}: {:?} != {:?}",
+                num, block_hash_on_store, block_hash_on_chain
+            );
+            tokio::try_join!(
+                client.execute(format!(
+                    "DELETE FROM blocks WHERE height = {} ",
+                    num
+                )),
+                client.execute(format!(
+                    "DELETE FROM inputs WHERE blockHeight = {}') ",
+                    num
+                )),
+                client.execute(format!(
+                    "DELETE FROM outputs WHERE blockHeight = {}') ",
+                    num
+                )),
+            )
+            .ok();
+
+            insert_block(&client, provider, trace_provider, provider_type, num)
+                .await
+                .unwrap();
+        }
+        // no need to check trace
+    }
 }
