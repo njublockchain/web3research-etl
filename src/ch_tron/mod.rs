@@ -1,5 +1,6 @@
 pub mod init;
 pub mod sync;
+pub mod check;
 
 mod schema;
 

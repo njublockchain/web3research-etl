@@ -1,7 +1,7 @@
 mod ch_btc;
 mod ch_eth;
-mod ch_tron;
 mod ch_solana;
+mod ch_tron;
 
 use clap::Parser;
 use std::error::Error;
@@ -138,8 +138,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 let provider = provider.replace("[chain]", chain_name);
                 let trace_provider = trace_provider.map(|x| x.replace("[chain]", chain_name));
 
-                ch_eth::init::init(db, provider, trace_provider, provider_type, from, batch)
-                    .await?
+                ch_eth::init::init(db, provider, trace_provider, provider_type, from, batch).await?
             }
             SupportedChainType::Tron => ch_tron::init::init(db, provider, from, batch).await?,
             SupportedChainType::Solana => {
@@ -159,7 +158,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 let trace_provider = trace_provider.map(|x| x.replace("[chain]", chain_name));
 
                 ch_btc::sync::sync(db, provider, trace_provider, provider_type).await?
-            },
+            }
             SupportedChainType::Ethereum => {
                 let chain_name = "ethereum";
                 let provider = provider.replace("[chain]", chain_name);
@@ -167,8 +166,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
                 ch_eth::sync::sync(db, provider, trace_provider, provider_type).await?
             }
-            SupportedChainType::Tron => todo!(),
-            SupportedChainType::Solana => todo!()
+            SupportedChainType::Tron => {
+                let chain_name = "tron";
+                let provider = provider.replace("[chain]", chain_name);
+                let trace_provider = trace_provider.map(|x| x.replace("[chain]", chain_name));
+                
+                ch_tron::sync::sync(db, provider, trace_provider, provider_type).await?;
+            }
+            SupportedChainType::Solana => todo!(),
         },
         ClapActionType::Check {
             from,
@@ -183,19 +188,23 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 let provider = provider.replace("[chain]", chain_name);
                 let trace_provider = trace_provider.map(|x| x.replace("[chain]", chain_name));
 
-                ch_btc::check::check(db, provider, trace_provider, provider_type, from)
-                    .await?;
+                ch_btc::check::check(db, provider, trace_provider, provider_type, from).await?;
             }
             SupportedChainType::Ethereum => {
                 let chain_name = "ethereum";
                 let provider = provider.replace("[chain]", chain_name);
                 let trace_provider = trace_provider.map(|x| x.replace("[chain]", chain_name));
 
-                ch_eth::check::check(db, provider, trace_provider, provider_type, from)
-                    .await?;
+                ch_eth::check::check(db, provider, trace_provider, provider_type, from).await?;
             }
-            SupportedChainType::Tron => {}
-            SupportedChainType::Solana => todo!()
+            SupportedChainType::Tron => {
+                let chain_name = "tron";
+                let provider = provider.replace("[chain]", chain_name);
+                let trace_provider = trace_provider.map(|x| x.replace("[chain]", chain_name));
+
+                ch_tron::check::check(db, provider, trace_provider, provider_type, from).await?;
+            }
+            SupportedChainType::Solana => todo!(),
         },
     }
     // if args.db.starts_with("clickhouse") {
