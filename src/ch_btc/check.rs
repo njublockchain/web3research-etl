@@ -1,14 +1,12 @@
-use std::error::Error;
-
-use bitcoin::{hashes::Hash};
+use bitcoin::hashes::Hash;
 use bitcoincore_rpc::RpcApi;
+use futures::StreamExt;
 use klickhouse::{Client, Row};
 use log::{debug, info, warn};
+use std::error::Error;
 use url::Url;
 
-use crate::{
-    ch_btc::sync::insert_block, ProviderType
-};
+use crate::{ch_btc::sync::insert_block, ProviderType};
 
 pub(crate) async fn check(
     db: String,
@@ -25,13 +23,18 @@ pub(crate) async fn check(
         klickhouse::ClientOptions {
             username: clickhouse_url.username().to_string(),
             password: clickhouse_url.password().unwrap_or("").to_string(),
-            default_database: clickhouse_url.path().to_string().strip_prefix('/').unwrap().to_string(),
+            default_database: clickhouse_url
+                .path()
+                .to_string()
+                .strip_prefix('/')
+                .unwrap()
+                .to_string(),
         }
     } else {
         klickhouse::ClientOptions::default()
     };
 
-    let klient = klickhouse::Client::connect(
+    let client = klickhouse::Client::connect(
         format!(
             "{}:{}",
             clickhouse_url.host().unwrap(),
@@ -59,25 +62,62 @@ pub(crate) async fn check(
     .unwrap();
 
     #[derive(Row, Clone, Debug)]
-    struct MaxNumberRow {
-        max: u64,
+    struct NumberRow {
+        number: u64,
     }
 
-    debug!("start interval update");
-    let local_height = klient
-        .query_one::<MaxNumberRow>("SELECT max(height) as max FROM blocks")
-        .await?;
-    info!("local height {}", local_height.max);
+    debug!("start checking for missing blocks");
     let latest = provider.get_block_count()? - 1;
-    info!("checking from {} to height {}", from, latest);
+    info!("current chain height {}", latest);
 
-    for num in from..=latest {
-        health_check(klient.clone(), &provider, &None, provider_type, num).await;
+    // Find missing blocks
+    let query = r#"
+        WITH (SELECT max(height) FROM blocks) AS max_number
+        SELECT
+            height as number
+        FROM
+            (SELECT arrayJoin(range(1, max_number + 1)) AS height)
+        WHERE
+            height NOT IN (SELECT height FROM blocks)
+        ORDER BY height;
+    "#;
+
+    let mut missing_blocks_stream = client.query::<NumberRow>(query).await?;
+    let mut missing_blocks = Vec::new();
+    while let Some(row) = missing_blocks_stream.next().await {
+        let row = row?;
+        missing_blocks.push(row);
+    }
+
+    let missing_count = missing_blocks.len();
+    info!("found {} missing blocks", missing_count);
+
+    // Also check for blocks that might be missing after the current max block
+    let max_query = "SELECT max(height) as number FROM blocks";
+    let max_block = client.query_one::<NumberRow>(max_query).await?;
+
+    info!("local max height {}", max_block.number);
+
+    // Process missing blocks found by the query
+    for row in missing_blocks {
+        info!("processing missing block {}", row.number);
+        health_check(client.clone(), &provider, &None, provider_type, row.number).await;
+    }
+
+    // Process blocks from the max_block to the latest block if needed
+    if max_block.number < latest {
+        info!(
+            "processing blocks from {} to {}",
+            max_block.number + 1,
+            latest
+        );
+        for num in (max_block.number + 1)..=latest {
+            health_check(client.clone(), &provider, &None, provider_type, num).await;
+        }
     }
 
     Ok(())
 }
-
 
 #[derive(Row, Clone, Debug)]
 struct BlockHashRow {
@@ -92,10 +132,7 @@ pub async fn health_check(
     num: u64,
 ) {
     let block = client
-        .query_one::<BlockHashRow>(format!(
-            "SELECT hash FROM blocks WHERE height = {}",
-            num
-        ))
+        .query_one::<BlockHashRow>(format!("SELECT hash FROM blocks WHERE height = {}", num))
         .await;
     if block.is_err() {
         warn!("add missing block: {}, {:?}", num, block);
@@ -104,7 +141,8 @@ pub async fn health_check(
             .unwrap();
     } else {
         let block_hash_on_store = block.unwrap().hash;
-        let block_hash_on_chain = hex::encode(provider.get_block_hash(num).unwrap().as_byte_array());
+        let block_hash_on_chain =
+            hex::encode(provider.get_block_hash(num).unwrap().as_byte_array());
 
         if block_hash_on_store != block_hash_on_chain {
             warn!(
@@ -112,14 +150,8 @@ pub async fn health_check(
                 num, block_hash_on_store, block_hash_on_chain
             );
             tokio::try_join!(
-                client.execute(format!(
-                    "DELETE FROM blocks WHERE height = {} ",
-                    num
-                )),
-                client.execute(format!(
-                    "DELETE FROM inputs WHERE blockHeight = {}') ",
-                    num
-                )),
+                client.execute(format!("DELETE FROM blocks WHERE height = {} ", num)),
+                client.execute(format!("DELETE FROM inputs WHERE blockHeight = {}') ", num)),
                 client.execute(format!(
                     "DELETE FROM outputs WHERE blockHeight = {}') ",
                     num

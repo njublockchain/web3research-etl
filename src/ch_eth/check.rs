@@ -1,3 +1,4 @@
+use futures::StreamExt;
 use klickhouse::{Client, ClientOptions, Row};
 use log::{debug, info};
 use std::error::Error;
@@ -65,28 +66,72 @@ pub(crate) async fn check(
     .await?;
 
     #[derive(Row, Clone, Debug)]
-    struct MaxNumberRow {
-        max: u64,
+    struct NumberRow {
+        number: u64,
     }
 
-    debug!("start interval update");
-    let local_height = client
-        .query_one::<MaxNumberRow>("SELECT max(number) as max FROM blocks")
-        .await?;
-    info!("local height {}", local_height.max);
+    debug!("start checking for missing blocks");
     let latest: u64 = provider.get_block_number().await?.as_u64();
-    info!("updating to height {}", latest);
-    // let from = local_height.max + 1;
+    info!("current chain height {}", latest);
 
-    for num in from..=latest {
+    // Find missing blocks
+    let query = r#"
+        WITH (SELECT max(number) FROM blocks) AS max_number
+        SELECT
+            number
+        FROM
+            (SELECT arrayJoin(range(1, max_number + 1)) AS number)
+        WHERE
+            number NOT IN (SELECT number FROM blocks)
+        ORDER BY number;
+    "#;
+    
+    let mut missing_blocks_stream = client
+        .query::<NumberRow>(query)
+        .await?;
+    let mut missing_blocks = Vec::new();
+    while let Some(row) = missing_blocks_stream.next().await {
+        let row = row?;
+        missing_blocks.push(row);
+    }
+    
+    let missing_count = missing_blocks.len();
+    info!("found {} missing blocks", missing_count);
+    
+    // Also check for blocks that might be missing after the current max block
+    let max_query = "SELECT max(number) as number FROM blocks";
+    let max_block = client
+        .query_one::<NumberRow>(max_query)
+        .await?;
+    
+    info!("local max height {}", max_block.number);
+    
+    // Process missing blocks found by the query
+    for row in missing_blocks {
+        info!("processing missing block {}", row.number);
         health_check(
             client.clone(),
             &provider,
             &trace_provider,
             provider_type,
-            num,
+            row.number,
         )
         .await;
+    }
+    
+    // Process blocks from the max_block to the latest block if needed
+    if max_block.number < latest {
+        info!("processing blocks from {} to {}", max_block.number + 1, latest);
+        for num in (max_block.number + 1)..=latest {
+            health_check(
+                client.clone(),
+                &provider,
+                &trace_provider,
+                provider_type,
+                num,
+            )
+            .await;
+        }
     }
 
     Ok(())
