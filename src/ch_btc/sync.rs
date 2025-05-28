@@ -1,7 +1,7 @@
 use std::error::Error;
 
 use bitcoincore_rpc::RpcApi;
-use klickhouse::Client;
+use klickhouse::{Client, Row};
 use log::{info, warn};
 use url::Url;
 
@@ -120,30 +120,148 @@ pub async fn sync(
     )
     .unwrap();
 
-    let mut prev_height = 0;
-    let mut prev_hash = String::new();
+    #[derive(Row, Clone, Debug)]
+    struct MaxBlock {
+        height: u64,
+        hash: String,
+    }
+
+    let local_latest_block = client
+        .query_one::<MaxBlock>(
+            "
+WITH (SELECT max(height) FROM blocks) AS max_block_height
+SELECT height, hash FROM blocks WHERE height = max_block_height",
+        )
+        .await?;
+    info!(
+        "db latest block: {}@{}",
+        local_latest_block.hash, local_latest_block.height
+    );
+
+    let mut local_latest_height = local_latest_block.height;
+    let mut local_latest_hash = local_latest_block.hash.clone();
 
     loop {
-        let latest_block = provider.get_block_count()?;
-        if latest_block > prev_height {
-            for block_height in prev_height..=latest_block {
-                let block_hash = provider.get_block_hash(block_height)?;
-                if block_hash.to_string() != prev_hash {
-                    info!("add missing block: {}, {:?}", block_height, block_hash);
-                    insert_block(&client, &provider, &None, _provider_type, block_height)
-                        .await
-                        .unwrap();
-                    prev_hash = block_hash.to_string();
+        let latest_block_hash = provider.get_best_block_hash()?;
+        let latest_block = provider.get_block(&latest_block_hash)?;
+
+        let remote_latest_height = latest_block
+            .bip34_block_height()
+            .unwrap_or(provider.get_block_count()?);
+
+        info!(
+            "remote latest block: {}@{}, local latest block: {}@{}",
+            hex::encode(&latest_block_hash[..]),
+            remote_latest_height,
+            local_latest_hash,
+            local_latest_height
+        );
+
+        if remote_latest_height > local_latest_height {
+            // Check if we need to handle reorg by verifying the hash at local_latest_height
+            let remote_block_at_local_height = provider.get_block_hash(local_latest_height)?;
+            let remote_block_at_local_height_hex = hex::encode(&remote_block_at_local_height[..]);
+
+            if remote_block_at_local_height_hex != local_latest_hash {
+                warn!(
+                    "Potential reorg detected! Local hash: {}, Remote hash: {} at height {}",
+                    local_latest_hash, remote_block_at_local_height_hex, local_latest_height
+                );
+                
+                // Find the common ancestor by going back until hashes match
+                let mut check_height = local_latest_height;
+                while check_height > 0 {
+                    check_height -= 1;
+                    
+                    let remote_hash = provider.get_block_hash(check_height)?;
+                    let remote_hash_hex = hex::encode(&remote_hash[..]);
+                    
+                    let local_block = client
+                        .query_one::<MaxBlock>(
+                            &format!("SELECT height, hash FROM blocks WHERE height = {}", check_height)
+                        )
+                        .await;
+                    
+                    match local_block {
+                        Ok(local_block) if local_block.hash == remote_hash_hex => {
+                            info!("Found common ancestor at height {}", check_height);
+                            
+                            // Delete blocks after the common ancestor
+                            let delete_query = format!("ALTER TABLE blocks DELETE WHERE height > {}", check_height);
+                            client.execute(&delete_query).await?;
+                            let delete_inputs_query = format!("ALTER TABLE inputs DELETE WHERE block_number > {}", check_height);
+                            client.execute(&delete_inputs_query).await?;
+                            let delete_outputs_query = format!("ALTER TABLE outputs DELETE WHERE block_number > {}", check_height);
+                            client.execute(&delete_outputs_query).await?;
+                            
+                            info!("Deleted blocks after height {} due to reorg", check_height);
+                            
+                            // Update local tracking variables
+                            local_latest_height = check_height;
+                            local_latest_hash = remote_hash_hex;
+                            break;
+                        }
+                        _ => continue,
+                    }
                 }
             }
 
-            info!("latest block: {}, {:?}", latest_block, prev_hash);
-            prev_height = latest_block;
-            prev_hash = provider.get_block_hash(latest_block)?.to_string();
+            // Sync new blocks from local_latest_height + 1 to remote_latest_height
+            for height in (local_latest_height + 1)..=remote_latest_height {
+                info!("Syncing block at height {}", height);
+                
+                match insert_block(&client, &provider, &None, _provider_type, height).await {
+                    Ok(_) => {
+                        info!("Successfully synced block at height {}", height);
+                        
+                        // Update local tracking variables
+                        let block_hash = provider.get_block_hash(height)?;
+                        local_latest_height = height;
+                        local_latest_hash = hex::encode(&block_hash[..]);
+                    }
+                    Err(e) => {
+                        warn!("Failed to sync block at height {}: {}", height, e);
+                        // Continue with next iteration to retry
+                        break;
+                    }
+                }
+            }
+        } else if remote_latest_height == local_latest_height {
+            // Check if the hash matches at the same height
+            let remote_hash_hex = hex::encode(&latest_block_hash[..]);
+            if remote_hash_hex != local_latest_hash {
+                warn!(
+                    "Hash mismatch at same height {}! Local: {}, Remote: {}",
+                    local_latest_height, local_latest_hash, remote_hash_hex
+                );
+                
+                // Handle the discrepancy - this might be a reorg at the tip
+                // Delete the current tip block and re-sync it
+                let delete_query = format!("ALTER TABLE blocks DELETE WHERE height = {}", local_latest_height);
+                client.execute(&delete_query).await?;
+                let delete_inputs_query = format!("ALTER TABLE inputs DELETE WHERE block_number = {}", local_latest_height);
+                client.execute(&delete_inputs_query).await?;
+                let delete_outputs_query = format!("ALTER TABLE outputs DELETE WHERE block_number = {}", local_latest_height);
+                client.execute(&delete_outputs_query).await?;
+                
+                // Re-sync the current height
+                match insert_block(&client, &provider, &None, _provider_type, local_latest_height).await {
+                    Ok(_) => {
+                        info!("Successfully re-synced block at height {}", local_latest_height);
+                        local_latest_hash = remote_hash_hex;
+                    }
+                    Err(e) => {
+                        warn!("Failed to re-sync block at height {}: {}", local_latest_height, e);
+                    }
+                }
+            } else {
+                info!("Local and remote are in sync at height {}", local_latest_height);
+            }
         } else {
-            info!(
-                "no new block, latest block: {}, {:?}",
-                latest_block, prev_hash
+            // remote_latest_height < local_latest_height - this shouldn't normally happen
+            warn!(
+                "Remote height {} is behind local height {}. This is unusual.",
+                remote_latest_height, local_latest_height
             );
         }
 
