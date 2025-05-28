@@ -126,7 +126,7 @@ pub(crate) async fn init(
         klickhouse::ClientOptions::default()
     };
 
-    let klient = klickhouse::Client::connect(
+    let client = klickhouse::Client::connect(
         format!(
             "{}:{}",
             clickhouse_url.host().unwrap(),
@@ -158,16 +158,16 @@ pub(crate) async fn init(
     };
 
     info!("Start ensuring database and tables exist");
-    klient
+    client
         .execute(format!("CREATE DATABASE IF NOT EXISTS {}", options.default_database).as_str())
         .await
         .unwrap();
-    klient.execute(BlockRow::DOCS).await.unwrap();
-    klient.execute(TransactionRow::DOCS).await.unwrap();
-    klient.execute(EventRow::DOCS).await.unwrap();
-    klient.execute(AccessListItemRow::DOCS).await.unwrap();
-    klient.execute(WithdrawalRow::DOCS).await.unwrap();
-    klient.execute(TraceRow::DOCS).await.unwrap();
+    client.execute(BlockRow::DOCS).await.unwrap();
+    client.execute(TransactionRow::DOCS).await.unwrap();
+    client.execute(EventRow::DOCS).await.unwrap();
+    client.execute(AccessListItemRow::DOCS).await.unwrap();
+    client.execute(WithdrawalRow::DOCS).await.unwrap();
+    client.execute(TraceRow::DOCS).await.unwrap();
 
     let latest: u64 = provider.get_block_number().await?.as_u64();
     let to = latest;
@@ -242,26 +242,30 @@ pub(crate) async fn init(
 
         if (num - from + 1) % batch == 0 || num == to {
             tokio::try_join!(
-                klient.insert_native_block(
+                client.insert_native_block(
                     "INSERT INTO transactions FORMAT native",
                     transaction_row_list.to_vec()
                 ),
-                klient.insert_native_block(
+                client.insert_native_block(
                     "INSERT INTO events FORMAT native",
                     event_row_list.to_vec()
                 ),
-                klient.insert_native_block(
+                client.insert_native_block(
+                    "INSERT INTO accessListItems FORMAT native",
+                    access_list_item_row_list.to_vec()
+                ),
+                client.insert_native_block(
                     "INSERT INTO withdraws FORMAT native",
                     withdraw_row_list.to_vec()
                 ),
-                klient.insert_native_block(
+                client.insert_native_block(
                     "INSERT INTO traces FORMAT native",
                     trace_row_list.to_vec()
                 )
             )
             .unwrap();
 
-            klient
+            client
                 .insert_native_block("INSERT INTO blocks FORMAT native", block_row_list.to_vec())
                 .await
                 .unwrap();
