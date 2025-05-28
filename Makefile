@@ -18,3 +18,5 @@ tron-init:
 	RUST_LOG=info ./target/release/web3research-etl init -c tron --db ${CLICKHOUSE_BASE_URL}/tron -p http://localhost:50051 --from $(FROM) --batch $(BATCH)
 btc-init:
 	RUST_LOG=info ./target/release/web3research-etl init -c bitcoin --db ${CLICKHOUSE_BASE_URL}/bitcoin -p http://${BITCOIN_RPC_USERNAME}:${BITCOIN_RPC_PASSWORD}@localhost:8332 --from $(FROM) --batch $(BATCH)
+btc-sync:
+	RUST_LOG=info ./target/release/web3research-etl sync -c bitcoin --db ${CLICKHOUSE_BASE_URL}/bitcoin -p http://${BITCOIN_RPC_USERNAME}:${BITCOIN_RPC_PASSWORD}@localhost:8332
