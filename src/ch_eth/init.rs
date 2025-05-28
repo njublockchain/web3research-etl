@@ -170,7 +170,7 @@ pub(crate) async fn init(
     klient.execute(TraceRow::DOCS).await.unwrap();
 
     let latest: u64 = provider.get_block_number().await?.as_u64();
-    let to = latest / 1_000 * 1_000;
+    let to = latest;
 
     warn!("Initializing blocks from {} to {}", from, to);
 

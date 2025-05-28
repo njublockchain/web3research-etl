@@ -222,9 +222,7 @@ pub(crate) async fn init(
         .unwrap()
         .raw_data
         .unwrap()
-        .number
-        / 1000
-        * 1000;
+        .number;
     warn!("target: {}", to);
 
     let mut block_row_list = Vec::with_capacity((batch + 1_u64) as usize);

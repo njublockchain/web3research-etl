@@ -69,7 +69,7 @@ pub(crate) async fn init(
     client.execute(OutputRow::DOCS).await.unwrap();
 
     let latest_height = provider.get_block_count()? - 1;
-    let to = latest_height / 10 * 10;
+    let to = latest_height;
     warn!("Initializing blocks from {} to {}", from, to);
 
     let mut block_row_list = Vec::with_capacity((batch + 1_u64) as usize);
