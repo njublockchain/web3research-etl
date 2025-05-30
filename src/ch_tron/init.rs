@@ -336,20 +336,24 @@ pub(crate) async fn init(
 
         for (index, transaction) in block.transactions.iter().enumerate() {
             let transaction_row = if num == 0 {
-                TransactionRow::from_grpc(&block_row, index as i64, transaction, None)
+                TransactionRow::from_grpc(&block_row, index.try_into().unwrap(), transaction, None)
             // handle genesis
             } else {
                 assert!(tx_infos[index].id == transaction.txid);
                 let transaction_row = TransactionRow::from_grpc(
                     &block_row,
-                    index as i64,
+                    index.try_into().unwrap(),
                     transaction,
                     Some(&tx_infos[index]),
                 );
 
                 for (index, log) in tx_infos[index].log.iter().enumerate() {
-                    let log_row =
-                        LogRow::from_grpc(&block_row, &transaction_row, index as i32, log);
+                    let log_row = LogRow::from_grpc(
+                        &block_row,
+                        &transaction_row,
+                        index.try_into().unwrap(),
+                        log,
+                    );
                     log_row_list.push(log_row);
                 }
 
@@ -639,7 +643,7 @@ pub(crate) async fn init(
             transaction_row_list.push(transaction_row);
         }
 
-        if (num - from + 1) % batch == 0 {
+        if (num - from + 1) % batch == 0 || num == to {
             tokio::try_join!(
                 klient.insert_native_block(
                     "INSERT INTO transactions FORMAT native",
@@ -815,6 +819,15 @@ pub(crate) async fn init(
                 .insert_native_block("INSERT INTO blocks FORMAT native", block_row_list.to_vec())
                 .await?;
 
+            info!(
+                "Inserted blocks from {} to {}, with {} transactions, {} logs, {} internals, ",
+                num - batch + 1,
+                num,
+                transaction_row_list.len(),
+                log_row_list.len(),
+                internal_row_list.len(),
+            );
+
             block_row_list.clear();
             transaction_row_list.clear();
             log_row_list.clear();
@@ -853,156 +866,8 @@ pub(crate) async fn init(
             delegate_resource_contract_row_list.clear();
             undelegate_resource_contract_row_list.clear();
             cancel_all_unfreeze_v2_contract_row_list.clear();
-
-            info!("{} done blocks & txs", num)
         }
     }
-
-    tokio::try_join!(
-        klient.insert_native_block("INSERT INTO blocks FORMAT native", block_row_list.to_vec()),
-        klient.insert_native_block(
-            "INSERT INTO transactions FORMAT native",
-            transaction_row_list.to_vec()
-        ),
-        klient.insert_native_block("INSERT INTO events FORMAT native", log_row_list.to_vec()),
-        klient.insert_native_block(
-            "INSERT INTO internals FORMAT native",
-            internal_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO accountCreateContracts FORMAT native",
-            account_create_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO transferContracts FORMAT native",
-            transfer_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO transferAssetContracts FORMAT native",
-            transfer_asset_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO voteWitnessContracts FORMAT native",
-            vote_witness_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO assetIssueContracts FORMAT native",
-            asset_issue_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO witnessUpdateContracts FORMAT native",
-            witness_update_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO participateAssetIssueContracts FORMAT native",
-            participate_asset_issue_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO accountUpdateContracts FORMAT native",
-            account_update_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO freezeBalanceContracts FORMAT native",
-            freeze_balance_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO unfreezeBalanceContracts FORMAT native",
-            unfreeze_balance_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO withdrawBalanceContracts FORMAT native",
-            withdraw_balance_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO unfreezeAssetContracts FORMAT native",
-            unfreeze_asset_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO updateAssetContracts FORMAT native",
-            update_asset_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO createSmartContracts FORMAT native",
-            create_smart_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO triggerSmartContracts FORMAT native",
-            trigger_smart_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO updateSettingContracts FORMAT native",
-            update_setting_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO exchangeCreateContracts FORMAT native",
-            exchange_create_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO exchangeInjectContracts FORMAT native",
-            exchange_inject_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO exchangeWithdrawContracts FORMAT native",
-            exchange_withdraw_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO exchangeTransactionContracts FORMAT native",
-            exchange_transaction_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO updateEnergyLimitContracts FORMAT native",
-            update_energy_limit_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO accountPermissionUpdateContracts FORMAT native",
-            account_permission_update_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO clearAbiContracts FORMAT native",
-            clear_abi_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO updateBrokerageContracts FORMAT native",
-            update_brokerage_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO shieldedTransferContracts FORMAT native",
-            shielded_transfer_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO marketSellAssetContracts FORMAT native",
-            market_sell_asset_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO marketCancelOrderContracts FORMAT native",
-            market_cancel_order_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO freezeBalanceV2Contracts FORMAT native",
-            freeze_balance_v2_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO unfreezeBalanceV2Contracts FORMAT native",
-            unfreeze_balance_v2_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO withdrawExpireUnfreezeContracts FORMAT native",
-            withdraw_expire_unfreeze_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO delegateResourceContracts FORMAT native",
-            delegate_resource_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO undelegateResourceContracts FORMAT native",
-            undelegate_resource_contract_row_list.to_vec()
-        ),
-        klient.insert_native_block(
-            "INSERT INTO cancelAllUnfreezeV2Contracts FORMAT native",
-            cancel_all_unfreeze_v2_contract_row_list.to_vec()
-        )
-    )
-    .unwrap();
 
     Ok(())
 }

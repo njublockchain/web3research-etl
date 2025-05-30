@@ -95,7 +95,7 @@ pub async fn insert_block(
     // Process all transactions
     for (index, transaction) in block.transactions.iter().enumerate() {
         let transaction_row = if block_number == 0 {
-            TransactionRow::from_grpc(&block_row, index as i64, transaction, None)
+            TransactionRow::from_grpc(&block_row, index.try_into().unwrap(), transaction, None)
         // handle genesis
         } else {
             if index >= tx_infos.len() {
@@ -118,7 +118,7 @@ pub async fn insert_block(
 
             let transaction_row = TransactionRow::from_grpc(
                 &block_row,
-                index as i64,
+                index.try_into().unwrap(),
                 transaction,
                 Some(&tx_infos[index]),
             );

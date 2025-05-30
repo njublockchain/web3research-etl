@@ -69,9 +69,9 @@ pub fn len_20_addr_from_any_vec(any_addr: Vec<u8>) -> String {
 /** CREATE TABLE IF NOT EXISTS blocks
 (
     `hash` FixedString(64),
-    `timestamp` Int64,
+    `timestamp` UInt64,
     `parentHash` FixedString(64),
-    `number` Int64,
+    `number` UInt64,
     `witnessId` Int64,
     `witnessAddress` String,
     `version` Int32,
@@ -84,9 +84,9 @@ SETTINGS index_granularity = 8192; */
 #[klickhouse(rename_all = "camelCase")]
 pub struct BlockRow {
     pub hash: String,
-    pub timestamp: i64,
+    pub timestamp: u64,
     pub parent_hash: String,
-    pub number: i64,
+    pub number: u64,
     pub witness_id: i64,
     pub witness_address: String,
     pub version: i32,
@@ -100,9 +100,9 @@ impl BlockRow {
 
         Self {
             hash: hex::encode(block.blockid.clone()),
-            timestamp: header_raw_data.timestamp,
+            timestamp: header_raw_data.timestamp.try_into().unwrap(),
             parent_hash: hex::encode(header_raw_data.parent_hash),
-            number: header_raw_data.number,
+            number: header_raw_data.number.try_into().unwrap(),
             witness_id: header_raw_data.witness_id,
             witness_address: if header_raw_data.witness_address.starts_with(&[0x41]) {
                 len_20_addr_from_any_vec(header_raw_data.witness_address)
@@ -117,10 +117,10 @@ impl BlockRow {
 
 /** CREATE TABLE IF NOT EXISTS transactions
 (
-    `blockNumber` Int64,
+    `blockNumber` UInt64,
     `blockHash` FixedString(64),
-    `blockTimestamp` Int64,
-    `index` Int64,
+    `blockTimestamp` UInt64,
+    `index` UInt64,
     `hash` FixedString(64),
     `expiration` Int64,
     `authorityAccountNames` Array(LowCardinality(String)),
@@ -132,12 +132,11 @@ impl BlockRow {
     `contractName` Nullable(String),
     `contractPermissionId` Nullable(Int32),
     `scripts` String,
-    `timestamp` Int64,
+    `timestamp` UInt64,
     `feeLimit` Int64,
     `signature` Array(String),
     `constantResult` String,
     `fee` Int64,
-    `blockTimeStamp` Int64,
     `contractResult` Nullable(String),
     `contractAddress` Nullable(String),
     `energyUsage` Int64,
@@ -174,10 +173,10 @@ SETTINGS index_granularity = 8192, allow_nullable_key=1; */
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct TransactionRow {
-    pub block_number: i64,
+    pub block_number: u64,
     pub block_hash: String,
-    pub block_timestamp: i64,
-    pub index: i64,
+    pub block_timestamp: u64,
+    pub index: u64,
     pub hash: String,
 
     pub expiration: i64,
@@ -192,14 +191,14 @@ pub struct TransactionRow {
     pub contract_permission_id: Option<i32>,
 
     pub scripts: String,
-    pub timestamp: i64,
+    pub timestamp: u64,
     pub fee_limit: i64,
 
     pub signature: Vec<String>,
     pub constant_result: String,
 
     pub fee: i64,
-    pub block_time_stamp: i64,
+    // pub block_time_stamp: i64,
     pub contract_result: Option<String>,
     pub contract_address: Option<String>,
 
@@ -241,7 +240,7 @@ pub struct TransactionRow {
 impl TransactionRow {
     pub fn from_grpc(
         block: &BlockRow,
-        index: i64,
+        index: u64,
         transaction: &TransactionExtention,
         transaction_info: Option<&TransactionInfo>,
     ) -> Self {
@@ -311,7 +310,7 @@ impl TransactionRow {
             contract_name: contract.map(|contract| hex::encode(contract.contract_name.clone())),
             contract_permission_id: contract.map(|contract| contract.permission_id),
             scripts: hex::encode(tx_raw_data.scripts),
-            timestamp: tx_raw_data.timestamp,
+            timestamp: tx_raw_data.timestamp.try_into().unwrap(),
             fee_limit: tx_raw_data.fee_limit,
             signature: tx
                 .signature
@@ -327,8 +326,8 @@ impl TransactionRow {
 
             // result -> txInfo
             fee: transaction_info.map_or(0, |transaction_info| transaction_info.fee),
-            block_time_stamp: transaction_info
-                .map_or(0, |transaction_info| transaction_info.block_time_stamp),
+            // block_time_stamp: transaction_info
+            //     .map_or(0, |transaction_info| transaction_info.block_time_stamp),
             contract_result: transaction_info.map_or(None, |transaction_info| {
                 Some(hex::encode(transaction_info.contract_result[0].clone()))
             }),
@@ -420,10 +419,11 @@ SETTINGS index_granularity = 8192, allow_nullable_key=1; */
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct LogRow {
-    pub block_number: i64,
+    pub block_number: u64,
     pub block_hash: String,
-    pub block_timestamp: i64,
+    pub block_timestamp: u64,
     pub transaction_hash: String,
+    pub transaction_index: u64,
     pub log_index: i32,
     pub address: String,
 
@@ -448,6 +448,7 @@ impl LogRow {
             block_number: block_row.number,
             block_hash: block_row.hash.clone(),
             block_timestamp: block_row.timestamp,
+            transaction_index: transaction_row.index,
             transaction_hash: transaction_row.hash.clone(),
             log_index,
             address: len_20_addr_from_any_vec(log.address.clone()),
@@ -485,10 +486,10 @@ SETTINGS index_granularity = 8192; */
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct InternalTransactionRow {
-    pub block_number: i64,
+    pub block_number: u64,
     pub block_hash: String,
-    pub block_timestamp: i64,
-    pub transaction_index: i64,
+    pub block_timestamp: u64,
+    pub transaction_index: u64,
     pub transaction_hash: String,
     pub internal_index: i32,
 
@@ -547,7 +548,7 @@ impl InternalTransactionRow {
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
-    `contractIndex` Int64,
+    `contractIndex` UInt64,
 
     `ownerAddress` String,
     `accountAddress` String,
@@ -558,12 +559,12 @@ SETTINGS index_granularity = 8192; */
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct AccountCreateContractRow {
-    pub block_number: i64,
+    pub block_number: u64,
     pub block_hash: String,
-    pub block_timestamp: i64,
-    pub transaction_index: i64,
+    pub block_timestamp: u64,
+    pub transaction_index: u64,
     pub transaction_hash: String,
-    pub contract_index: i64,
+    pub contract_index: u64,
 
     pub owner_address: String,
     pub account_address: String,
@@ -574,7 +575,7 @@ impl AccountCreateContractRow {
     pub fn from_grpc(
         block: &BlockRow,
         transaction: &TransactionRow,
-        contract_index: i64,
+        contract_index: u64,
         call: &AccountCreateContract,
     ) -> Self {
         Self {
@@ -599,8 +600,7 @@ impl AccountCreateContractRow {
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
-    `transactionIndex` Int64,
-    `contractIndex` Int64,
+    `contractIndex` UInt64,
 
     `ownerAddress` String,
     `toAddress` String,
@@ -613,12 +613,12 @@ SETTINGS index_granularity = 8192;
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct TransferContractRow {
-    pub block_number: i64,
+    pub block_number: u64,
     pub block_hash: String,
-    pub block_timestamp: i64,
+    pub block_timestamp: u64,
     pub transaction_hash: String,
-    pub transaction_index: i64,
-    pub contract_index: i64,
+    pub transaction_index: u64,
+    pub contract_index: u64,
 
     pub owner_address: String,
     pub to_address: String,
@@ -629,7 +629,7 @@ impl TransferContractRow {
     pub fn from_grpc(
         block: &BlockRow,
         transaction: &TransactionRow,
-        contract_index: i64,
+        contract_index: u64,
         call: &TransferContract,
     ) -> Self {
         Self {
@@ -652,9 +652,9 @@ impl TransferContractRow {
     `blockNumber` UInt64,
     `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
-    `transactionIndex` Int64,
+    `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
-    `contractIndex` Int64,
+    `contractIndex` UInt64,
 
     `assetName` String,
     `ownerAddress` String,
@@ -668,11 +668,11 @@ SETTINGS index_granularity = 8192; */
 #[klickhouse(rename_all = "camelCase")]
 pub struct TransferAssetContractRow {
     pub block_hash: String,
-    pub block_number: i64,
-    pub block_timestamp: i64,
+    pub block_number: u64,
+    pub block_timestamp: u64,
     pub transaction_hash: String,
-    pub transaction_index: i64,
-    pub contract_index: i64,
+    pub transaction_index: u64,
+    pub contract_index: u64,
 
     pub asset_name: String,
     pub owner_address: String,
@@ -684,7 +684,7 @@ impl TransferAssetContractRow {
     pub fn from_grpc(
         block: &BlockRow,
         transaction: &TransactionRow,
-        contract_index: i64,
+        contract_index: u64,
         call: &TransferAssetContract,
     ) -> Self {
         Self {
@@ -710,8 +710,7 @@ impl TransferAssetContractRow {
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
-    `transactionIndex` Int64,
-    `contractIndex` Int64,
+    `contractIndex` UInt64,
 
     `ownerAddress` String,
     `voteAddress` Array(String),
@@ -723,12 +722,12 @@ SETTINGS index_granularity = 8192; */
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct VoteAssetContractRow {
-    pub block_number: i64,
+    pub block_number: u64,
     pub block_hash: String,
-    pub block_timestamp: i64,
+    pub block_timestamp: u64,
     pub transaction_hash: String,
-    pub transaction_index: i64,
-    pub contract_index: i64,
+    pub transaction_index: u64,
+    pub contract_index: u64,
 
     pub owner_address: String,
     pub vote_address: Vec<String>,
@@ -740,7 +739,7 @@ impl VoteAssetContractRow {
     pub fn from_grpc(
         block: &BlockRow,
         transaction: &TransactionRow,
-        contract_index: i64,
+        contract_index: u64,
         call: &VoteAssetContract,
     ) -> Self {
         Self {
@@ -769,8 +768,7 @@ impl VoteAssetContractRow {
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
-    transactionIndex Int64,
-    contractIndex Int64,
+    `contractIndex` UInt64,
 
     ownerAddress String,
     votes Nested(
@@ -785,11 +783,11 @@ SETTINGS index_granularity = 8192;  */
 #[klickhouse(rename_all = "camelCase")]
 pub struct VoteWitnessContractRow {
     pub block_hash: String,
-    pub block_number: i64,
-    pub block_timestamp: i64,
+    pub block_number: u64,
+    pub block_timestamp: u64,
     pub transaction_hash: String,
-    pub transaction_index: i64,
-    pub contract_index: i64,
+    pub transaction_index: u64,
+    pub contract_index: u64,
 
     pub owner_address: String,
     #[klickhouse(rename = "votes.voteAddress")]
@@ -803,7 +801,7 @@ impl VoteWitnessContractRow {
     pub fn from_grpc(
         block: &BlockRow,
         transaction: &TransactionRow,
-        contract_index: i64,
+        contract_index: u64,
         call: &VoteWitnessContract,
     ) -> Self {
         Self {
@@ -848,7 +846,7 @@ impl Vote {
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
-    contractIndex Int64,
+    `contractIndex` UInt64,
 
     ownerAddress String,
     url String,
@@ -858,12 +856,12 @@ ORDER BY (ownerAddress, url, blockNumber, transactionHash, contractIndex)
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct WitnessCreateContractRow {
-    pub block_number: i64,
+    pub block_number: u64,
     pub block_hash: String,
-    pub block_timestamp: i64,
+    pub block_timestamp: u64,
     pub transaction_hash: String,
-    pub transaction_index: i64,
-    pub contract_index: i64,
+    pub transaction_index: u64,
+    pub contract_index: u64,
 
     pub owner_address: String,
     pub url: String,
@@ -873,7 +871,7 @@ impl WitnessCreateContractRow {
     pub fn from_grpc(
         block: &BlockRow,
         transaction: &TransactionRow,
-        contract_index: i64,
+        contract_index: u64,
         call: &WitnessCreateContract,
     ) -> Self {
         Self {
@@ -896,7 +894,7 @@ impl WitnessCreateContractRow {
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
-    contractIndex Int64,
+    `contractIndex` UInt64,
 
     id String,
     ownerAddress String,
@@ -923,12 +921,12 @@ SETTINGS index_granularity = 8192;
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct AssetIssueContractRow {
-    pub block_number: i64,
+    pub block_number: u64,
     pub block_hash: String,
-    pub block_timestamp: i64,
+    pub block_timestamp: u64,
     pub transaction_hash: String,
-    pub transaction_index: i64,
-    pub contract_index: i64,
+    pub transaction_index: u64,
+    pub contract_index: u64,
 
     pub id: String,
     pub owner_address: String,
@@ -954,7 +952,7 @@ impl AssetIssueContractRow {
     pub fn from_grpc(
         block: &BlockRow,
         transaction: &TransactionRow,
-        contract_index: i64,
+        contract_index: u64,
         call: &AssetIssueContract,
     ) -> Self {
         Self {
@@ -994,7 +992,7 @@ CREATE TABLE IF NOT EXISTS witnessUpdateContracts (
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
-    `contractIndex` Int64,
+    `contractIndex` UInt64,
 
     `ownerAddress` String,
     `updateUrl` String,
@@ -1005,12 +1003,12 @@ SETTINGS index_granularity = 8192;
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct WitnessUpdateContractRow {
-    pub block_number: i64,
+    pub block_number: u64,
     pub block_hash: String,
-    pub block_timestamp: i64,
+    pub block_timestamp: u64,
     pub transaction_hash: String,
-    pub transaction_index: i64,
-    pub contract_index: i64,
+    pub transaction_index: u64,
+    pub contract_index: u64,
 
     pub owner_address: String,
     pub update_url: String,
@@ -1020,7 +1018,7 @@ impl WitnessUpdateContractRow {
     pub fn from_grpc(
         block: &BlockRow,
         transaction: &TransactionRow,
-        contract_index: i64,
+        contract_index: u64,
         call: &WitnessUpdateContract,
     ) -> Self {
         Self {
@@ -1043,7 +1041,7 @@ impl WitnessUpdateContractRow {
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
-    `contractIndex` Int64,
+    `contractIndex` UInt64,
 
     `ownerAddress` String,
     `toAddress` String,
@@ -1055,12 +1053,12 @@ ORDER BY (ownerAddress, toAddress, assetName, blockNumber, transactionHash, cont
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct ParticipateAssetIssueContractRow {
-    pub block_number: i64,
+    pub block_number: u64,
     pub block_hash: String,
-    pub block_timestamp: i64,
+    pub block_timestamp: u64,
     pub transaction_hash: String,
-    pub transaction_index: i64,
-    pub contract_index: i64,
+    pub transaction_index: u64,
+    pub contract_index: u64,
 
     pub owner_address: String,
     pub to_address: String,
@@ -1072,7 +1070,7 @@ impl ParticipateAssetIssueContractRow {
     pub fn from_grpc(
         block: &BlockRow,
         transaction: &TransactionRow,
-        contract_index: i64,
+        contract_index: u64,
         call: &ParticipateAssetIssueContract,
     ) -> Self {
         Self {
@@ -1097,7 +1095,7 @@ impl ParticipateAssetIssueContractRow {
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
-    `contractIndex` Int64,
+    `contractIndex` UInt64,
 
     `ownerAddress` String,
     `accountName` String,
@@ -1108,12 +1106,12 @@ SETTINGS index_granularity = 8192;
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct AccountUpdateContractRow {
-    pub block_number: i64,
+    pub block_number: u64,
     pub block_hash: String,
-    pub block_timestamp: i64,
+    pub block_timestamp: u64,
     pub transaction_hash: String,
-    pub transaction_index: i64,
-    pub contract_index: i64,
+    pub transaction_index: u64,
+    pub contract_index: u64,
 
     pub owner_address: String,
     pub account_name: String,
@@ -1123,7 +1121,7 @@ impl AccountUpdateContractRow {
     pub fn from_grpc(
         block: &BlockRow,
         transaction: &TransactionRow,
-        contract_index: i64,
+        contract_index: u64,
         call: &AccountUpdateContract,
     ) -> Self {
         Self {
@@ -1146,7 +1144,7 @@ impl AccountUpdateContractRow {
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
-    `contractIndex` Int64,
+    `contractIndex` UInt64,
 
     `ownerAddress` String,
     `frozenBalance` Int64,
@@ -1160,12 +1158,12 @@ SETTINGS index_granularity = 8192;
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct FreezeBalanceContractRow {
-    pub block_number: i64,
+    pub block_number: u64,
     pub block_hash: String,
-    pub block_timestamp: i64,
+    pub block_timestamp: u64,
     pub transaction_hash: String,
-    pub transaction_index: i64,
-    pub contract_index: i64,
+    pub transaction_index: u64,
+    pub contract_index: u64,
 
     pub owner_address: String,
     pub frozen_balance: i64,
@@ -1177,7 +1175,7 @@ impl FreezeBalanceContractRow {
     pub fn from_grpc(
         block: &BlockRow,
         transaction: &TransactionRow,
-        contract_index: i64,
+        contract_index: u64,
         call: &FreezeBalanceContract,
     ) -> Self {
         Self {
@@ -1203,7 +1201,7 @@ impl FreezeBalanceContractRow {
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
-    `contractIndex` Int64,
+    `contractIndex` UInt64,
 
     `ownerAddress` String,
     `resource` Int32,
@@ -1215,12 +1213,12 @@ SETTINGS index_granularity = 8192;
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct UnfreezeBalanceContractRow {
-    pub block_number: i64,
+    pub block_number: u64,
     pub block_hash: String,
-    pub block_timestamp: i64,
+    pub block_timestamp: u64,
     pub transaction_hash: String,
-    pub transaction_index: i64,
-    pub contract_index: i64,
+    pub transaction_index: u64,
+    pub contract_index: u64,
 
     pub owner_address: String,
     pub resource: i32,
@@ -1231,7 +1229,7 @@ impl UnfreezeBalanceContractRow {
     pub fn from_grpc(
         block: &BlockRow,
         transaction: &TransactionRow,
-        contract_index: i64,
+        contract_index: u64,
         call: &UnfreezeBalanceContract,
     ) -> Self {
         Self {
@@ -1255,7 +1253,7 @@ impl UnfreezeBalanceContractRow {
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
-    `contractIndex` Int64,
+    `contractIndex` UInt64,
 
     `ownerAddress` String,
 ) ENGINE = ReplacingMergeTree
@@ -1265,12 +1263,12 @@ SETTINGS index_granularity = 8192;
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct WithdrawBalanceContractRow {
-    pub block_number: i64,
+    pub block_number: u64,
     pub block_hash: String,
-    pub block_timestamp: i64,
+    pub block_timestamp: u64,
     pub transaction_hash: String,
-    pub transaction_index: i64,
-    pub contract_index: i64,
+    pub transaction_index: u64,
+    pub contract_index: u64,
 
     pub owner_address: String,
 }
@@ -1279,7 +1277,7 @@ impl WithdrawBalanceContractRow {
     pub fn from_grpc(
         block: &BlockRow,
         transaction: &TransactionRow,
-        contract_index: i64,
+        contract_index: u64,
         call: &WithdrawBalanceContract,
     ) -> Self {
         Self {
@@ -1301,7 +1299,7 @@ impl WithdrawBalanceContractRow {
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
-    `contractIndex` Int64,
+    `contractIndex` UInt64,
 
     `ownerAddress` String,
 ) ENGINE = ReplacingMergeTree
@@ -1311,12 +1309,12 @@ SETTINGS index_granularity = 8192;
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct UnfreezeAssetContractRow {
-    pub block_number: i64,
+    pub block_number: u64,
     pub block_hash: String,
-    pub block_timestamp: i64,
+    pub block_timestamp: u64,
     pub transaction_hash: String,
-    pub transaction_index: i64,
-    pub contract_index: i64,
+    pub transaction_index: u64,
+    pub contract_index: u64,
 
     pub owner_address: String,
 }
@@ -1325,7 +1323,7 @@ impl UnfreezeAssetContractRow {
     pub fn from_grpc(
         block: &BlockRow,
         transaction: &TransactionRow,
-        contract_index: i64,
+        contract_index: u64,
         call: &UnfreezeAssetContract,
     ) -> Self {
         Self {
@@ -1347,7 +1345,7 @@ impl UnfreezeAssetContractRow {
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
-    `contractIndex` Int64,
+    `contractIndex` UInt64,
 
     `ownerAddress` String,
     `description` String,
@@ -1361,12 +1359,12 @@ SETTINGS index_granularity = 8192;
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct UpdateAssetContractRow {
-    pub block_number: i64,
+    pub block_number: u64,
     pub block_hash: String,
-    pub block_timestamp: i64,
+    pub block_timestamp: u64,
     pub transaction_hash: String,
-    pub transaction_index: i64,
-    pub contract_index: i64,
+    pub transaction_index: u64,
+    pub contract_index: u64,
 
     pub owner_address: String,
     pub description: String,
@@ -1379,7 +1377,7 @@ impl UpdateAssetContractRow {
     pub fn from_grpc(
         block: &BlockRow,
         transaction: &TransactionRow,
-        contract_index: i64,
+        contract_index: u64,
         call: &UpdateAssetContract,
     ) -> Self {
         Self {
@@ -1405,7 +1403,7 @@ impl UpdateAssetContractRow {
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
-    `contractIndex` Int64,
+    `contractIndex` UInt64,
 
     `ownerAddress` String,
     `parameters` Map(Int64, Int64) COMMENT 'key -> value',
@@ -1416,12 +1414,12 @@ SETTINGS index_granularity = 8192;
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct ProposalCreateContractRow {
-    pub block_number: i64,
+    pub block_number: u64,
     pub block_hash: String,
-    pub block_timestamp: i64,
+    pub block_timestamp: u64,
     pub transaction_hash: String,
-    pub transaction_index: i64,
-    pub contract_index: i64,
+    pub transaction_index: u64,
+    pub contract_index: u64,
 
     pub owner_address: String,
     pub parameters: HashMap<i64, i64>,
@@ -1431,7 +1429,7 @@ impl ProposalCreateContractRow {
     pub fn from_grpc(
         block: &BlockRow,
         transaction: &TransactionRow,
-        contract_index: i64,
+        contract_index: u64,
         call: &ProposalCreateContract,
     ) -> Self {
         Self {
@@ -1454,7 +1452,7 @@ impl ProposalCreateContractRow {
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
-    `contractIndex` Int64,
+    `contractIndex` UInt64,
 
     `ownerAddress` String,
     `proposalId` Int64,
@@ -1466,12 +1464,12 @@ SETTINGS index_granularity = 8192;
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct ProposalApproveContractRow {
-    pub block_number: i64,
+    pub block_number: u64,
     pub block_hash: String,
-    pub block_timestamp: i64,
+    pub block_timestamp: u64,
     pub transaction_hash: String,
-    pub transaction_index: i64,
-    pub contract_index: i64,
+    pub transaction_index: u64,
+    pub contract_index: u64,
 
     pub owner_address: String,
     pub proposal_id: i64,
@@ -1482,7 +1480,7 @@ impl ProposalApproveContractRow {
     pub fn from_grpc(
         block: &BlockRow,
         transaction: &TransactionRow,
-        contract_index: i64,
+        contract_index: u64,
         call: &ProposalApproveContract,
     ) -> Self {
         Self {
@@ -1506,7 +1504,7 @@ impl ProposalApproveContractRow {
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
-    `contractIndex` Int64,
+    `contractIndex` UInt64,
 
     `ownerAddress` String,
     `proposalId` Int64,
@@ -1517,12 +1515,12 @@ SETTINGS index_granularity = 8192;
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct ProposalDeleteContractRow {
-    pub block_number: i64,
+    pub block_number: u64,
     pub block_hash: String,
-    pub block_timestamp: i64,
+    pub block_timestamp: u64,
     pub transaction_hash: String,
-    pub transaction_index: i64,
-    pub contract_index: i64,
+    pub transaction_index: u64,
+    pub contract_index: u64,
 
     pub owner_address: String,
     pub proposal_id: i64,
@@ -1532,7 +1530,7 @@ impl ProposalDeleteContractRow {
     pub fn from_grpc(
         block: &BlockRow,
         transaction: &TransactionRow,
-        contract_index: i64,
+        contract_index: u64,
         call: &ProposalDeleteContract,
     ) -> Self {
         Self {
@@ -1555,7 +1553,7 @@ impl ProposalDeleteContractRow {
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
-    `contractIndex` Int64,
+    `contractIndex` UInt64,
 
     `accountId` String,
     `ownerAddress` String,
@@ -1566,12 +1564,12 @@ SETTINGS index_granularity = 8192;
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct SetAccountIdContractRow {
-    pub block_number: i64,
+    pub block_number: u64,
     pub block_hash: String,
-    pub block_timestamp: i64,
+    pub block_timestamp: u64,
     pub transaction_hash: String,
-    pub transaction_index: i64,
-    pub contract_index: i64,
+    pub transaction_index: u64,
+    pub contract_index: u64,
 
     pub account_id: String,
     pub owner_address: String,
@@ -1581,7 +1579,7 @@ impl SetAccountIdContractRow {
     pub fn from_grpc(
         block: &BlockRow,
         transaction: &TransactionRow,
-        contract_index: i64,
+        contract_index: u64,
         call: &SetAccountIdContract,
     ) -> Self {
         Self {
@@ -1604,7 +1602,7 @@ impl SetAccountIdContractRow {
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
-    `contractIndex` Int64,
+    `contractIndex` UInt64,
 
     `ownerAddress` String,
 
@@ -1629,12 +1627,12 @@ SETTINGS index_granularity = 8192, allow_nullable_key=1;
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct CreateSmartContractRow {
-    pub block_number: i64,
+    pub block_number: u64,
     pub block_hash: String,
-    pub block_timestamp: i64,
+    pub block_timestamp: u64,
     pub transaction_hash: String,
-    pub transaction_index: i64,
-    pub contract_index: i64,
+    pub transaction_index: u64,
+    pub contract_index: u64,
 
     pub owner_address: String,
     #[klickhouse(flatten)]
@@ -1663,7 +1661,7 @@ impl CreateSmartContractRow {
     pub fn from_grpc(
         block: &BlockRow,
         transaction: &TransactionRow,
-        contract_index: i64,
+        contract_index: u64,
         call: &CreateSmartContract,
     ) -> Self {
         let new_contract = call.new_contract.clone();
@@ -1720,7 +1718,7 @@ impl CreateSmartContractRow {
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
-    `contractIndex` Int64,
+    `contractIndex` UInt64,
 
     `ownerAddress` String,
     `contractAddress` String,
@@ -1735,12 +1733,12 @@ SETTINGS index_granularity = 8192;
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct TriggerSmartContractRow {
-    pub block_number: i64,
+    pub block_number: u64,
     pub block_hash: String,
-    pub block_timestamp: i64,
+    pub block_timestamp: u64,
     pub transaction_hash: String,
-    pub transaction_index: i64,
-    pub contract_index: i64,
+    pub transaction_index: u64,
+    pub contract_index: u64,
 
     pub owner_address: String,
     pub contract_address: String,
@@ -1754,7 +1752,7 @@ impl TriggerSmartContractRow {
     pub fn from_grpc(
         block: &BlockRow,
         transaction: &TransactionRow,
-        contract_index: i64,
+        contract_index: u64,
         call: &TriggerSmartContract,
     ) -> Self {
         Self {
@@ -1781,7 +1779,7 @@ impl TriggerSmartContractRow {
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
-    `contractIndex` Int64,
+    `contractIndex` UInt64,
 
     `ownerAddress` String,
     `contractAddress` String,
@@ -1793,12 +1791,12 @@ SETTINGS index_granularity = 8192;
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct UpdateSettingContractRow {
-    pub block_number: i64,
+    pub block_number: u64,
     pub block_hash: String,
-    pub block_timestamp: i64,
+    pub block_timestamp: u64,
     pub transaction_hash: String,
-    pub transaction_index: i64,
-    pub contract_index: i64,
+    pub transaction_index: u64,
+    pub contract_index: u64,
 
     pub owner_address: String,
     pub contract_address: String,
@@ -1809,7 +1807,7 @@ impl UpdateSettingContractRow {
     pub fn from_grpc(
         block: &BlockRow,
         transaction: &TransactionRow,
-        contract_index: i64,
+        contract_index: u64,
         call: &UpdateSettingContract,
     ) -> Self {
         Self {
@@ -1833,7 +1831,7 @@ impl UpdateSettingContractRow {
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
-    `contractIndex` Int64,
+    `contractIndex` UInt64,
 
     `ownerAddress` String,
     `firstTokenId` String,
@@ -1847,12 +1845,12 @@ SETTINGS index_granularity = 8192;
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct ExchangeCreateContractRow {
-    pub block_number: i64,
+    pub block_number: u64,
     pub block_hash: String,
-    pub block_timestamp: i64,
+    pub block_timestamp: u64,
     pub transaction_hash: String,
-    pub transaction_index: i64,
-    pub contract_index: i64,
+    pub transaction_index: u64,
+    pub contract_index: u64,
 
     pub owner_address: String,
     pub first_token_id: String,
@@ -1865,7 +1863,7 @@ impl ExchangeCreateContractRow {
     pub fn from_grpc(
         block: &BlockRow,
         transaction: &TransactionRow,
-        contract_index: i64,
+        contract_index: u64,
         call: &ExchangeCreateContract,
     ) -> Self {
         Self {
@@ -1891,7 +1889,7 @@ impl ExchangeCreateContractRow {
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
-    `contractIndex` Int64,
+    `contractIndex` UInt64,
 
     `ownerAddress` String,
     `exchangeId` Int64,
@@ -1904,12 +1902,12 @@ SETTINGS index_granularity = 8192;
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct ExchangeInjectContractRow {
-    pub block_number: i64,
+    pub block_number: u64,
     pub block_hash: String,
-    pub block_timestamp: i64,
+    pub block_timestamp: u64,
     pub transaction_hash: String,
-    pub transaction_index: i64,
-    pub contract_index: i64,
+    pub transaction_index: u64,
+    pub contract_index: u64,
 
     pub owner_address: String,
     pub exchange_id: i64,
@@ -1921,7 +1919,7 @@ impl ExchangeInjectContractRow {
     pub fn from_grpc(
         block: &BlockRow,
         transaction: &TransactionRow,
-        contract_index: i64,
+        contract_index: u64,
         call: &ExchangeInjectContract,
     ) -> Self {
         Self {
@@ -1946,7 +1944,7 @@ impl ExchangeInjectContractRow {
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
-    `contractIndex` Int64,
+    `contractIndex` UInt64,
 
     `ownerAddress` String,
     `exchangeId` Int64,
@@ -1959,12 +1957,12 @@ SETTINGS index_granularity = 8192;
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct ExchangeWithdrawContractRow {
-    pub block_number: i64,
+    pub block_number: u64,
     pub block_hash: String,
-    pub block_timestamp: i64,
+    pub block_timestamp: u64,
     pub transaction_hash: String,
-    pub transaction_index: i64,
-    pub contract_index: i64,
+    pub transaction_index: u64,
+    pub contract_index: u64,
 
     pub owner_address: String,
     pub exchange_id: i64,
@@ -1976,7 +1974,7 @@ impl ExchangeWithdrawContractRow {
     pub fn from_grpc(
         block: &BlockRow,
         transaction: &TransactionRow,
-        contract_index: i64,
+        contract_index: u64,
         call: &ExchangeWithdrawContract,
     ) -> Self {
         Self {
@@ -2001,7 +1999,7 @@ impl ExchangeWithdrawContractRow {
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
-    `contractIndex` Int64,
+    `contractIndex` UInt64,
 
     `ownerAddress` String,
     `exchangeId` Int64,
@@ -2015,12 +2013,12 @@ SETTINGS index_granularity = 8192;
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct ExchangeTransactionContractRow {
-    pub block_number: i64,
+    pub block_number: u64,
     pub block_hash: String,
-    pub block_timestamp: i64,
+    pub block_timestamp: u64,
     pub transaction_hash: String,
-    pub transaction_index: i64,
-    pub contract_index: i64,
+    pub transaction_index: u64,
+    pub contract_index: u64,
 
     pub owner_address: String,
     pub exchange_id: i64,
@@ -2033,7 +2031,7 @@ impl ExchangeTransactionContractRow {
     pub fn from_grpc(
         block: &BlockRow,
         transaction: &TransactionRow,
-        contract_index: i64,
+        contract_index: u64,
         call: &ExchangeTransactionContract,
     ) -> Self {
         Self {
@@ -2059,7 +2057,7 @@ impl ExchangeTransactionContractRow {
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
-    `contractIndex` Int64,
+    `contractIndex` UInt64,
 
     `ownerAddress` String,
     `contractAddress` String,
@@ -2071,12 +2069,12 @@ SETTINGS index_granularity = 8192;
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct UpdateEnergyLimitContractRow {
-    pub block_number: i64,
+    pub block_number: u64,
     pub block_hash: String,
-    pub block_timestamp: i64,
+    pub block_timestamp: u64,
     pub transaction_hash: String,
-    pub transaction_index: i64,
-    pub contract_index: i64,
+    pub transaction_index: u64,
+    pub contract_index: u64,
 
     pub owner_address: String,
     pub contract_address: String,
@@ -2087,7 +2085,7 @@ impl UpdateEnergyLimitContractRow {
     pub fn from_grpc(
         block: &BlockRow,
         transaction: &TransactionRow,
-        contract_index: i64,
+        contract_index: u64,
         call: &UpdateEnergyLimitContract,
     ) -> Self {
         Self {
@@ -2111,7 +2109,7 @@ impl UpdateEnergyLimitContractRow {
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
-    `contractIndex` Int64,
+    `contractIndex` UInt64,
 
     `ownerAddress` String,
 
@@ -2147,12 +2145,12 @@ SETTINGS index_granularity = 8192, allow_nullable_key=1;
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct AccountPermissionUpdateContractRow {
-    pub block_number: i64,
+    pub block_number: u64,
     pub block_hash: String,
-    pub block_timestamp: i64,
+    pub block_timestamp: u64,
     pub transaction_hash: String,
-    pub transaction_index: i64,
-    pub contract_index: i64,
+    pub transaction_index: u64,
+    pub contract_index: u64,
 
     pub owner_address: String,
 
@@ -2192,7 +2190,7 @@ impl AccountPermissionUpdateContractRow {
     pub fn from_grpc(
         block: &BlockRow,
         transaction: &TransactionRow,
-        contract_index: i64,
+        contract_index: u64,
         call: &AccountPermissionUpdateContract,
     ) -> Self {
         let (
@@ -2372,7 +2370,7 @@ impl AccountPermissionUpdateContractRow {
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
-    `contractIndex` Int64,
+    `contractIndex` UInt64,
 
     `ownerAddress` String,
     `contractAddress` String,
@@ -2383,12 +2381,12 @@ SETTINGS index_granularity = 8192;
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct ClearAbiContractRow {
-    pub block_number: i64,
+    pub block_number: u64,
     pub block_hash: String,
-    pub block_timestamp: i64,
+    pub block_timestamp: u64,
     pub transaction_hash: String,
-    pub transaction_index: i64,
-    pub contract_index: i64,
+    pub transaction_index: u64,
+    pub contract_index: u64,
 
     pub owner_address: String,
     pub contract_address: String,
@@ -2398,7 +2396,7 @@ impl ClearAbiContractRow {
     pub fn from_grpc(
         block: &BlockRow,
         transaction: &TransactionRow,
-        contract_index: i64,
+        contract_index: u64,
         call: &ClearAbiContract,
     ) -> Self {
         Self {
@@ -2420,7 +2418,7 @@ impl ClearAbiContractRow {
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
-    `contractIndex` Int64,
+    `contractIndex` UInt64,
 
     `ownerAddress` String,
     `brokerage` Int32,
@@ -2431,12 +2429,12 @@ SETTINGS index_granularity = 8192;
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct UpdateBrokerageContractRow {
-    pub block_number: i64,
+    pub block_number: u64,
     pub block_hash: String,
-    pub block_timestamp: i64,
+    pub block_timestamp: u64,
     pub transaction_hash: String,
-    pub transaction_index: i64,
-    pub contract_index: i64,
+    pub transaction_index: u64,
+    pub contract_index: u64,
 
     pub owner_address: String,
     pub brokerage: i32,
@@ -2446,7 +2444,7 @@ impl UpdateBrokerageContractRow {
     pub fn from_grpc(
         block: &BlockRow,
         transaction: &TransactionRow,
-        contract_index: i64,
+        contract_index: u64,
         call: &UpdateBrokerageContract,
     ) -> Self {
         Self {
@@ -2468,7 +2466,7 @@ impl UpdateBrokerageContractRow {
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
-    `contractIndex` Int64,
+    `contractIndex` UInt64,
 
     `transparentFromAddress` String,
     `fromAmount` Int64,
@@ -2497,12 +2495,12 @@ SETTINGS index_granularity = 8192;
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct ShieldedTransferContractRow {
-    pub block_number: i64,
+    pub block_number: u64,
     pub block_hash: String,
-    pub block_timestamp: i64,
+    pub block_timestamp: u64,
     pub transaction_hash: String,
-    pub transaction_index: i64,
-    pub contract_index: i64,
+    pub transaction_index: u64,
+    pub contract_index: u64,
 
     pub transparent_from_address: String,
     pub from_amount: i64,
@@ -2541,7 +2539,7 @@ impl ShieldedTransferContractRow {
     pub fn from_grpc(
         block: &BlockRow,
         transaction: &TransactionRow,
-        contract_index: i64,
+        contract_index: u64,
         call: &ShieldedTransferContract,
     ) -> Self {
         let (
@@ -2667,7 +2665,7 @@ impl ShieldedTransferContractRow {
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
-    `contractIndex` Int64,
+    `contractIndex` UInt64,
 
     `ownerAddress` String,
     `sellTokenId` String,
@@ -2681,12 +2679,12 @@ SETTINGS index_granularity = 8192;
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct MarketSellAssetContractRow {
-    pub block_number: i64,
+    pub block_number: u64,
     pub block_hash: String,
-    pub block_timestamp: i64,
+    pub block_timestamp: u64,
     pub transaction_hash: String,
-    pub transaction_index: i64,
-    pub contract_index: i64,
+    pub transaction_index: u64,
+    pub contract_index: u64,
 
     pub owner_address: String,
     pub sell_token_id: String,
@@ -2699,7 +2697,7 @@ impl MarketSellAssetContractRow {
     pub fn from_grpc(
         block: &BlockRow,
         transaction: &TransactionRow,
-        contract_index: i64,
+        contract_index: u64,
         call: &MarketSellAssetContract,
     ) -> Self {
         Self {
@@ -2724,7 +2722,7 @@ impl MarketSellAssetContractRow {
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
-    `contractIndex` Int64,
+    `contractIndex` UInt64,
 
     `ownerAddress` String,
     `orderId` String,
@@ -2735,12 +2733,12 @@ SETTINGS index_granularity = 8192;
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct MarketCancelOrderContractRow {
-    pub block_number: i64,
+    pub block_number: u64,
     pub block_hash: String,
-    pub block_timestamp: i64,
+    pub block_timestamp: u64,
     pub transaction_hash: String,
-    pub transaction_index: i64,
-    pub contract_index: i64,
+    pub transaction_index: u64,
+    pub contract_index: u64,
 
     pub owner_address: String,
     pub order_id: String,
@@ -2750,7 +2748,7 @@ impl MarketCancelOrderContractRow {
     pub fn from_grpc(
         block: &BlockRow,
         transaction: &TransactionRow,
-        contract_index: i64,
+        contract_index: u64,
         call: &MarketCancelOrderContract,
     ) -> Self {
         Self {
@@ -2773,7 +2771,7 @@ impl MarketCancelOrderContractRow {
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
-    `contractIndex` Int64,
+    `contractIndex` UInt64,
 
     `ownerAddress` String,
     `frozenBalance` Int64,
@@ -2785,12 +2783,12 @@ SETTINGS index_granularity = 8192;
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct FreezeBalanceV2ContractRow {
-    pub block_number: i64,
+    pub block_number: u64,
     pub block_hash: String,
-    pub block_timestamp: i64,
+    pub block_timestamp: u64,
     pub transaction_hash: String,
-    pub transaction_index: i64,
-    pub contract_index: i64,
+    pub transaction_index: u64,
+    pub contract_index: u64,
 
     pub owner_address: String,
     pub frozen_balance: i64,
@@ -2801,7 +2799,7 @@ impl FreezeBalanceV2ContractRow {
     pub fn from_grpc(
         block: &BlockRow,
         transaction: &TransactionRow,
-        contract_index: i64,
+        contract_index: u64,
         call: &FreezeBalanceV2Contract,
     ) -> Self {
         Self {
@@ -2826,7 +2824,7 @@ impl FreezeBalanceV2ContractRow {
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
-    `contractIndex` Int64,
+    `contractIndex` UInt64,
 
     `ownerAddress` String,
     `unfreezeBalance` Int64,
@@ -2838,12 +2836,12 @@ SETTINGS index_granularity = 8192;
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct UnfreezeBalanceV2ContractRow {
-    pub block_number: i64,
+    pub block_number: u64,
     pub block_hash: String,
-    pub block_timestamp: i64,
+    pub block_timestamp: u64,
     pub transaction_hash: String,
-    pub transaction_index: i64,
-    pub contract_index: i64,
+    pub transaction_index: u64,
+    pub contract_index: u64,
 
     pub owner_address: String,
     pub unfreeze_balance: i64,
@@ -2854,7 +2852,7 @@ impl UnfreezeBalanceV2ContractRow {
     pub fn from_grpc(
         block: &BlockRow,
         transaction: &TransactionRow,
-        contract_index: i64,
+        contract_index: u64,
         call: &UnfreezeBalanceV2Contract,
     ) -> Self {
         Self {
@@ -2879,7 +2877,7 @@ impl UnfreezeBalanceV2ContractRow {
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
-    `contractIndex` Int64,
+    `contractIndex` UInt64,
 
     `ownerAddress` String,
 ) ENGINE = ReplacingMergeTree
@@ -2889,12 +2887,12 @@ SETTINGS index_granularity = 8192;
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct WithdrawExpireUnfreezeContractRow {
-    pub block_number: i64,
+    pub block_number: u64,
     pub block_hash: String,
-    pub block_timestamp: i64,
+    pub block_timestamp: u64,
     pub transaction_hash: String,
-    pub transaction_index: i64,
-    pub contract_index: i64,
+    pub transaction_index: u64,
+    pub contract_index: u64,
 
     pub owner_address: String,
 }
@@ -2903,7 +2901,7 @@ impl WithdrawExpireUnfreezeContractRow {
     pub fn from_grpc(
         block: &BlockRow,
         transaction: &TransactionRow,
-        contract_index: i64,
+        contract_index: u64,
         call: &WithdrawExpireUnfreezeContract,
     ) -> Self {
         Self {
@@ -2925,7 +2923,7 @@ impl WithdrawExpireUnfreezeContractRow {
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
-    `contractIndex` Int64,
+    `contractIndex` UInt64,
 
     `ownerAddress` String,
     `resource` Int32,
@@ -2940,12 +2938,12 @@ SETTINGS index_granularity = 8192;
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct DelegateResourceContractRow {
-    pub block_number: i64,
+    pub block_number: u64,
     pub block_hash: String,
-    pub block_timestamp: i64,
+    pub block_timestamp: u64,
     pub transaction_hash: String,
-    pub transaction_index: i64,
-    pub contract_index: i64,
+    pub transaction_index: u64,
+    pub contract_index: u64,
 
     pub owner_address: String,
     pub resource: i32,
@@ -2959,7 +2957,7 @@ impl DelegateResourceContractRow {
     pub fn from_grpc(
         block: &BlockRow,
         transaction: &TransactionRow,
-        contract_index: i64,
+        contract_index: u64,
         call: &DelegateResourceContract,
     ) -> Self {
         Self {
@@ -2987,7 +2985,7 @@ impl DelegateResourceContractRow {
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
-    `contractIndex` Int64,
+    `contractIndex` UInt64,
 
     `ownerAddress` String,
     `resource` Int32,
@@ -3000,12 +2998,12 @@ SETTINGS index_granularity = 8192;
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct UndelegateResourceContractRow {
-    pub block_number: i64,
+    pub block_number: u64,
     pub block_hash: String,
-    pub block_timestamp: i64,
+    pub block_timestamp: u64,
     pub transaction_hash: String,
-    pub transaction_index: i64,
-    pub contract_index: i64,
+    pub transaction_index: u64,
+    pub contract_index: u64,
 
     pub owner_address: String,
     pub resource: i32,
@@ -3017,7 +3015,7 @@ impl UndelegateResourceContractRow {
     pub fn from_grpc(
         block: &BlockRow,
         transaction: &TransactionRow,
-        contract_index: i64,
+        contract_index: u64,
         call: &UnDelegateResourceContract,
     ) -> Self {
         Self {
@@ -3043,7 +3041,7 @@ impl UndelegateResourceContractRow {
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
-    `contractIndex` Int64,
+    `contractIndex` UInt64,
 
     `ownerAddress` String,
 ) ENGINE = ReplacingMergeTree
@@ -3053,12 +3051,12 @@ SETTINGS index_granularity = 8192;
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct CancelAllUnfreezeV2ContractRow {
-    pub block_number: i64,
+    pub block_number: u64,
     pub block_hash: String,
-    pub block_timestamp: i64,
+    pub block_timestamp: u64,
     pub transaction_hash: String,
-    pub transaction_index: i64,
-    pub contract_index: i64,
+    pub transaction_index: u64,
+    pub contract_index: u64,
 
     pub owner_address: String,
 }
@@ -3067,7 +3065,7 @@ impl CancelAllUnfreezeV2ContractRow {
     pub fn from_grpc(
         block: &BlockRow,
         transaction: &TransactionRow,
-        contract_index: i64,
+        contract_index: u64,
         call: &CancelAllUnfreezeV2Contract,
     ) -> Self {
         Self {
