@@ -50,12 +50,12 @@ impl BlockRow {
     pub fn from_bitcoin_rpc(height: u64, block: &bitcoin::blockdata::block::Block) -> Self {
         Self {
             height: height,
-            hash: hex::encode(block.block_hash().as_byte_array()),
+            hash: block.block_hash().to_string(),
             total_size: block.total_size().try_into().unwrap(),
             weight: block.weight().to_wu(),
-            prev_block_hash: hex::encode(block.header.prev_blockhash.as_byte_array()),
+            prev_block_hash: block.header.prev_blockhash.to_string(),
             version: block.header.version.to_consensus(),
-            // merkle_root: hex::encode(block.header.merkle_root.as_byte_array()),
+            // merkle_root: block.header.merkle_root.to_string(),
             time: block.header.time,
             bits: block.header.bits.to_consensus(),
             nonce: block.header.nonce,
@@ -67,6 +67,7 @@ impl BlockRow {
 /**
 CREATE TABLE IF NOT EXISTS inputs (
     `txid` FixedString(64),
+    `txIndex` UInt32,
     `totalSize` UInt32,
     `baseSize` UInt32,
     `vsize` UInt32,
@@ -80,6 +81,7 @@ CREATE TABLE IF NOT EXISTS inputs (
     `prevOutputTxid` FixedString(64),
     `prevOutputVout` UInt32,
     `scriptSig` String,
+    `scriptSigAsm` String,
     `sequence` UInt32,
     `witness` Array(String)
 )
@@ -91,6 +93,7 @@ SETTINGS index_granularity = 8192;
 #[klickhouse(rename_all = "camelCase")]
 pub struct InputRow {
     pub txid: String,
+    pub tx_index: u32,
     pub total_size: u32,
     pub base_size: u32,
     pub vsize: u32,
@@ -112,6 +115,7 @@ pub struct InputRow {
     /// The script which pushes values on the stack which will cause
     /// the referenced output's script to be accepted.
     pub script_sig: String,
+    pub script_sig_asm: String,
 
     /// The sequence number, which suggests to miners which of two
     /// conflicting transactions should be preferred, or 0xFFFFFFFF
@@ -119,6 +123,11 @@ pub struct InputRow {
     /// the miner behaviour cannot be enforced.
     pub sequence: u32,
 
+    /// Witness data: an array of byte-arrays.
+    /// Note that this field is not (de)serialized with the rest of
+    /// the TxIn in Encodable/Decodable, as it is (de)serialized at
+    /// the end of the full Transaction. It is (de)serialized with
+    /// the rest of the TxIn in other (de)serialization routines.
     pub witness: Vec<String>,
 }
 
@@ -127,31 +136,29 @@ impl InputRow {
         height: u64,
         block: &bitcoin::blockdata::block::Block,
         tx: &bitcoin::blockdata::transaction::Transaction,
+        tx_index: u32,
         index: u32,
         vin: &bitcoin::blockdata::transaction::TxIn,
     ) -> Self {
         Self {
-            txid: hex::encode(tx.compute_txid().as_byte_array()),
+            txid: tx.compute_txid().to_string(),
+            tx_index: tx_index,
             total_size: tx.total_size() as u32,
             base_size: tx.base_size() as u32,
             vsize: tx.vsize() as u32,
             weight: tx.weight().to_wu(),
             version: tx.version.0,
             lock_time: tx.lock_time.to_consensus_u32(),
-            block_hash: hex::encode(block.block_hash().as_byte_array()),
+            block_hash: block.block_hash().to_string(),
             block_height: height,
             block_time: block.header.time,
             index: index as u32,
-            prev_output_txid: hex::encode(vin.previous_output.txid.as_byte_array()),
+            prev_output_txid: vin.previous_output.txid.to_string(),
             prev_output_vout: vin.previous_output.vout,
-            script_sig: hex::encode(&vin.script_sig.to_bytes()),
+            script_sig: vin.script_sig.to_hex_string(),
+            script_sig_asm: vin.script_sig.to_asm_string(),
             sequence: vin.sequence.0,
-            witness: vin
-                .witness
-                .to_vec()
-                .iter()
-                .map(|w| hex::encode(w))
-                .collect(),
+            witness: vin.witness.iter().map(|w| hex::encode(w)).collect(),
         }
     }
 }
@@ -159,6 +166,7 @@ impl InputRow {
 /**
 CREATE TABLE IF NOT EXISTS outputs (
     `txid` FixedString(64),
+    `txIndex` UInt32,
     `totalSize` UInt32,
     `baseSize` UInt32,
     `vsize` UInt32,
@@ -171,6 +179,7 @@ CREATE TABLE IF NOT EXISTS outputs (
     `index` UInt32,
     `value` UInt64,
     `scriptPubkey` String,
+    `scriptPubkeyAsm` String,
     `address` Nullable(String)
 )
 ENGINE = ReplacingMergeTree
@@ -181,6 +190,7 @@ SETTINGS index_granularity = 8192;
 #[klickhouse(rename_all = "camelCase")]
 pub struct OutputRow {
     pub txid: String,
+    pub tx_index: u32,
     pub total_size: u32,
     pub base_size: u32,
     pub vsize: u32,
@@ -197,6 +207,7 @@ pub struct OutputRow {
     pub value: u64,
     /// The script which must be satisfied for the output to be spent.
     pub script_pubkey: String,
+    pub script_pubkey_asm: String,
     pub address: Option<String>,
 }
 
@@ -205,23 +216,27 @@ impl OutputRow {
         height: u64,
         block: &bitcoin::blockdata::block::Block,
         tx: &bitcoin::blockdata::transaction::Transaction,
+        tx_index: u32,
         index: u32,
         vout: &bitcoin::blockdata::transaction::TxOut,
     ) -> Self {
         Self {
-            txid: hex::encode(tx.compute_txid().as_byte_array()),
+            txid: tx.compute_txid().to_string(),
+            tx_index: tx_index,
             total_size: tx.total_size() as u32,
             base_size: tx.base_size() as u32,
             vsize: tx.vsize() as u32,
             weight: tx.weight().to_wu(),
             version: tx.version.0,
             lock_time: tx.lock_time.to_consensus_u32(),
-            block_hash: hex::encode(block.block_hash().as_byte_array()),
+            block_hash: block.block_hash().to_string(),
             block_height: height,
             block_time: block.header.time,
             index: index as u32,
             value: vout.value.to_sat(),
-            script_pubkey: hex::encode(&vout.script_pubkey.to_bytes()),
+            script_pubkey: vout.script_pubkey.to_hex_string(),
+            script_pubkey_asm: vout.script_pubkey.to_asm_string(),
+            // Attempt to derive an address from the script_pubkey.
             address: Address::from_script(&vout.script_pubkey, bitcoin::Network::Bitcoin)
                 .ok()
                 .map(|s| s.to_string()),

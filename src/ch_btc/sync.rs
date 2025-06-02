@@ -31,16 +31,28 @@ pub async fn insert_block(
 
     block_row_list.push(block_row);
 
-    for tx in &block.txdata {
+    for (tx_index, tx) in block.txdata.iter().enumerate() {
         for (index, vin) in tx.input.iter().enumerate() {
-            let input_row =
-                InputRow::from_bitcoin_rpc(height, &block, &tx, index.try_into().unwrap(), vin);
+            let input_row = InputRow::from_bitcoin_rpc(
+                height,
+                &block,
+                &tx,
+                tx_index.try_into().unwrap(),
+                index.try_into().unwrap(),
+                vin,
+            );
             input_row_list.push(input_row);
         }
 
         for (index, vout) in tx.output.iter().enumerate() {
-            let output_row =
-                OutputRow::from_bitcoin_rpc(height, &block, &tx, index.try_into().unwrap(), vout);
+            let output_row = OutputRow::from_bitcoin_rpc(
+                height,
+                &block,
+                &tx,
+                tx_index.try_into().unwrap(),
+                index.try_into().unwrap(),
+                vout,
+            );
             output_row_list.push(output_row);
         }
     }
@@ -151,7 +163,7 @@ SELECT height, hash FROM blocks WHERE height = max_block_height",
 
         info!(
             "remote latest block: {}@{}, local latest block: {}@{}",
-            hex::encode(&latest_block_hash[..]),
+            latest_block_hash.to_string(),
             remote_latest_height,
             local_latest_hash,
             local_latest_height
@@ -160,42 +172,52 @@ SELECT height, hash FROM blocks WHERE height = max_block_height",
         if remote_latest_height > local_latest_height {
             // Check if we need to handle reorg by verifying the hash at local_latest_height
             let remote_block_at_local_height = provider.get_block_hash(local_latest_height)?;
-            let remote_block_at_local_height_hex = hex::encode(&remote_block_at_local_height[..]);
+            let remote_block_at_local_height_hex = remote_block_at_local_height.to_string();
 
             if remote_block_at_local_height_hex != local_latest_hash {
                 warn!(
                     "Potential reorg detected! Local hash: {}, Remote hash: {} at height {}",
                     local_latest_hash, remote_block_at_local_height_hex, local_latest_height
                 );
-                
+
                 // Find the common ancestor by going back until hashes match
                 let mut check_height = local_latest_height;
                 while check_height > 0 {
                     check_height -= 1;
-                    
+
                     let remote_hash = provider.get_block_hash(check_height)?;
-                    let remote_hash_hex = hex::encode(&remote_hash[..]);
-                    
+                    let remote_hash_hex = remote_hash.to_string();
+
                     let local_block = client
-                        .query_one::<MaxBlock>(
-                            &format!("SELECT height, hash FROM blocks WHERE height = {}", check_height)
-                        )
+                        .query_one::<MaxBlock>(&format!(
+                            "SELECT height, hash FROM blocks WHERE height = {}",
+                            check_height
+                        ))
                         .await;
-                    
+
                     match local_block {
                         Ok(local_block) if local_block.hash == remote_hash_hex => {
                             info!("Found common ancestor at height {}", check_height);
-                            
+
                             // Delete blocks after the common ancestor
-                            let delete_query = format!("ALTER TABLE blocks DELETE WHERE height > {}", check_height);
+                            let delete_query = format!(
+                                "ALTER TABLE blocks DELETE WHERE height > {}",
+                                check_height
+                            );
                             client.execute(&delete_query).await?;
-                            let delete_inputs_query = format!("ALTER TABLE inputs DELETE WHERE block_number > {}", check_height);
+                            let delete_inputs_query = format!(
+                                "ALTER TABLE inputs DELETE WHERE block_number > {}",
+                                check_height
+                            );
                             client.execute(&delete_inputs_query).await?;
-                            let delete_outputs_query = format!("ALTER TABLE outputs DELETE WHERE block_number > {}", check_height);
+                            let delete_outputs_query = format!(
+                                "ALTER TABLE outputs DELETE WHERE block_number > {}",
+                                check_height
+                            );
                             client.execute(&delete_outputs_query).await?;
-                            
+
                             info!("Deleted blocks after height {} due to reorg", check_height);
-                            
+
                             // Update local tracking variables
                             local_latest_height = check_height;
                             local_latest_hash = remote_hash_hex;
@@ -209,15 +231,15 @@ SELECT height, hash FROM blocks WHERE height = max_block_height",
             // Sync new blocks from local_latest_height + 1 to remote_latest_height
             for height in (local_latest_height + 1)..=remote_latest_height {
                 info!("Syncing block at height {}", height);
-                
+
                 match insert_block(&client, &provider, &None, _provider_type, height).await {
                     Ok(_) => {
                         info!("Successfully synced block at height {}", height);
-                        
+
                         // Update local tracking variables
                         let block_hash = provider.get_block_hash(height)?;
                         local_latest_height = height;
-                        local_latest_hash = hex::encode(&block_hash[..]);
+                        local_latest_hash = block_hash.to_string();
                     }
                     Err(e) => {
                         warn!("Failed to sync block at height {}: {}", height, e);
@@ -228,34 +250,60 @@ SELECT height, hash FROM blocks WHERE height = max_block_height",
             }
         } else if remote_latest_height == local_latest_height {
             // Check if the hash matches at the same height
-            let remote_hash_hex = hex::encode(&latest_block_hash[..]);
+            let remote_hash_hex = latest_block_hash.to_string();
             if remote_hash_hex != local_latest_hash {
                 warn!(
                     "Hash mismatch at same height {}! Local: {}, Remote: {}",
                     local_latest_height, local_latest_hash, remote_hash_hex
                 );
-                
+
                 // Handle the discrepancy - this might be a reorg at the tip
                 // Delete the current tip block and re-sync it
-                let delete_query = format!("ALTER TABLE blocks DELETE WHERE height = {}", local_latest_height);
+                let delete_query = format!(
+                    "ALTER TABLE blocks DELETE WHERE height = {}",
+                    local_latest_height
+                );
                 client.execute(&delete_query).await?;
-                let delete_inputs_query = format!("ALTER TABLE inputs DELETE WHERE block_number = {}", local_latest_height);
+                let delete_inputs_query = format!(
+                    "ALTER TABLE inputs DELETE WHERE block_number = {}",
+                    local_latest_height
+                );
                 client.execute(&delete_inputs_query).await?;
-                let delete_outputs_query = format!("ALTER TABLE outputs DELETE WHERE block_number = {}", local_latest_height);
+                let delete_outputs_query = format!(
+                    "ALTER TABLE outputs DELETE WHERE block_number = {}",
+                    local_latest_height
+                );
                 client.execute(&delete_outputs_query).await?;
-                
+
                 // Re-sync the current height
-                match insert_block(&client, &provider, &None, _provider_type, local_latest_height).await {
+                match insert_block(
+                    &client,
+                    &provider,
+                    &None,
+                    _provider_type,
+                    local_latest_height,
+                )
+                .await
+                {
                     Ok(_) => {
-                        info!("Successfully re-synced block at height {}", local_latest_height);
+                        info!(
+                            "Successfully re-synced block at height {}",
+                            local_latest_height
+                        );
                         local_latest_hash = remote_hash_hex;
                     }
                     Err(e) => {
-                        warn!("Failed to re-sync block at height {}: {}", local_latest_height, e);
+                        warn!(
+                            "Failed to re-sync block at height {}: {}",
+                            local_latest_height, e
+                        );
                     }
                 }
             } else {
-                info!("Local and remote are in sync at height {}", local_latest_height);
+                info!(
+                    "Local and remote are in sync at height {}",
+                    local_latest_height
+                );
             }
         } else {
             // remote_latest_height < local_latest_height - this shouldn't normally happen

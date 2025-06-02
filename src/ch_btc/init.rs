@@ -86,10 +86,10 @@ pub(crate) async fn init(
 
         block_row_list.push(block_row);
 
-        for tx in &block.txdata {
+        for (tx_index, tx) in block.txdata.iter().enumerate() {
             for (index, vin) in tx.input.iter().enumerate() {
                 let input_row =
-                    InputRow::from_bitcoin_rpc(height, &block, tx, index.try_into().unwrap(), vin);
+                    InputRow::from_bitcoin_rpc(height, &block, tx, tx_index.try_into().unwrap(), index.try_into().unwrap(), vin);
 
                 input_row_list.push(input_row);
             }
@@ -99,6 +99,7 @@ pub(crate) async fn init(
                     height,
                     &block,
                     tx,
+                    tx_index.try_into().unwrap(), 
                     index.try_into().unwrap(),
                     vout,
                 );

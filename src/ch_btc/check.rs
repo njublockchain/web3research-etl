@@ -141,8 +141,7 @@ pub async fn health_check(
             .unwrap();
     } else {
         let block_hash_on_store = block.unwrap().hash;
-        let block_hash_on_chain =
-            hex::encode(provider.get_block_hash(num).unwrap().as_byte_array());
+        let block_hash_on_chain = provider.get_block_hash(num).unwrap().to_string();
 
         if block_hash_on_store != block_hash_on_chain {
             warn!(
