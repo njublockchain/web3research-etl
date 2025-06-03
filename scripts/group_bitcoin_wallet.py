@@ -147,20 +147,36 @@ class BitcoinWalletGrouper:
         if not all_addresses:
             return {}
 
-        # 批量查询所有地址的钱包映射
-        placeholders = ",".join(["%s"] * len(all_addresses))
-        query = f"""
-        SELECT address, walletId
-        FROM walletAddresses 
-        WHERE address IN ({placeholders})
-        """
-
-        result = self.client.query(query, list(all_addresses))
-
+        # Process addresses in chunks to avoid query size limits
+        address_chunk_size = 5000  # Process 5000 addresses per batch
+        address_list = list(all_addresses)
+        total_chunks = (len(address_list) + address_chunk_size - 1) // address_chunk_size
+        
+        logger.info(f"Querying {len(address_list)} addresses in {total_chunks} chunks")
+        
         address_to_wallet = {}
-        for address, wallet_id in result.result_rows:
-            wallet_id = wallet_id.decode("utf-8") if isinstance(wallet_id, bytes) else wallet_id
-            address_to_wallet[address] = wallet_id
+        
+        for chunk_index in range(total_chunks):
+            start_idx = chunk_index * address_chunk_size
+            end_idx = min((chunk_index + 1) * address_chunk_size, len(address_list))
+            current_chunk = address_list[start_idx:end_idx]
+            
+            logger.info(f"Processing address chunk {chunk_index + 1}/{total_chunks} with {len(current_chunk)} addresses")
+            
+            # Create query for this chunk
+            placeholders = ",".join(["%s"] * len(current_chunk))
+            query = f"""
+            SELECT address, walletId
+            FROM walletAddresses 
+            WHERE address IN ({placeholders})
+            """
+
+            result = self.client.query(query, current_chunk)
+
+            # Process results from this chunk
+            for address, wallet_id in result.result_rows:
+                wallet_id = wallet_id.decode("utf-8") if isinstance(wallet_id, bytes) else wallet_id
+                address_to_wallet[address] = wallet_id
 
         return address_to_wallet
 
@@ -249,29 +265,53 @@ class BitcoinWalletGrouper:
                     wallet_updates[primary_wallet]["last_block"], block_height
                 )
 
-        # Batch insert new wallets
+        # Batch insert new wallets in chunks
         if new_wallets:
-            self.client.insert(
-                "wallets",
-                new_wallets,
-                column_names=[
-                    "walletId",
-                    "addressCount",
-                    "firstSeenBlock",
-                    "lastSeenBlock",
-                ],
-            )
+            wallet_chunk_size = 5000
+            total_wallet_chunks = (len(new_wallets) + wallet_chunk_size - 1) // wallet_chunk_size
+            logger.info(f"Inserting {len(new_wallets)} new wallets in {total_wallet_chunks} chunks")
+            
+            for chunk_index in range(total_wallet_chunks):
+                start_idx = chunk_index * wallet_chunk_size
+                end_idx = min((chunk_index + 1) * wallet_chunk_size, len(new_wallets))
+                wallet_chunk = new_wallets[start_idx:end_idx]
+                
+                logger.info(f"Inserting wallet chunk {chunk_index + 1}/{total_wallet_chunks} with {len(wallet_chunk)} wallets")
+                
+                self.client.insert(
+                    "wallets",
+                    wallet_chunk,
+                    column_names=[
+                        "walletId",
+                        "addressCount",
+                        "firstSeenBlock",
+                        "lastSeenBlock",
+                    ],
+                )
+            
             logger.info(f"Batch created {len(new_wallets)} new wallets")
 
-        # Batch insert address mappings
+        # Batch insert address mappings in chunks
         if new_addresses:
-            self.client.insert(
-                "walletAddresses",
-                new_addresses,
-                column_names=["address", "walletId", "firstSeenBlock", "firstSeenTxid"],
-            )
+            address_chunk_size = 5000
+            total_address_chunks = (len(new_addresses) + address_chunk_size - 1) // address_chunk_size
+            logger.info(f"Inserting {len(new_addresses)} address mappings in {total_address_chunks} chunks")
+            
+            for chunk_index in range(total_address_chunks):
+                start_idx = chunk_index * address_chunk_size
+                end_idx = min((chunk_index + 1) * address_chunk_size, len(new_addresses))
+                address_chunk = new_addresses[start_idx:end_idx]
+                
+                logger.info(f"Inserting address chunk {chunk_index + 1}/{total_address_chunks} with {len(address_chunk)} addresses")
+                
+                self.client.insert(
+                    "walletAddresses",
+                    address_chunk,
+                    column_names=["address", "walletId", "firstSeenBlock", "firstSeenTxid"],
+                )
+                
             logger.info(f"Batch added {len(new_addresses)} address mappings")
-
+            
         # Batch update wallet information
         if wallet_updates:
             update_data = []
@@ -282,6 +322,16 @@ class BitcoinWalletGrouper:
                     if isinstance(wallet_id, bytes)
                     else wallet_id
                 )
+                # Get existing wallet information including firstSeenBlock
+                wallet_info_query = self.client.query(
+                    f"SELECT firstSeenBlock FROM wallets WHERE walletId = '{wallet_id}'",
+                )
+                first_seen_block = (
+                    wallet_info_query.result_rows[0][0] 
+                    if wallet_info_query.result_rows 
+                    else update_info["last_block"]  # Use current block if no record exists
+                )
+                
                 count_result = self.client.query(
                     f"SELECT count() FROM walletAddresses WHERE walletId = '{wallet_id}'",
                 )
@@ -290,15 +340,28 @@ class BitcoinWalletGrouper:
                 )
 
                 update_data.append(
-                    [wallet_id, total_addresses, update_info["last_block"]]
+                    [wallet_id, total_addresses, first_seen_block, update_info["last_block"]]
                 )
 
             if update_data:
-                self.client.insert(
-                    "wallets",
-                    update_data,
-                    column_names=["walletId", "addressCount", "lastSeenBlock"],
-                )
+                # Process wallet updates in chunks
+                update_chunk_size = 5000
+                total_update_chunks = (len(update_data) + update_chunk_size - 1) // update_chunk_size
+                logger.info(f"Updating {len(update_data)} wallets in {total_update_chunks} chunks")
+                
+                for chunk_index in range(total_update_chunks):
+                    start_idx = chunk_index * update_chunk_size
+                    end_idx = min((chunk_index + 1) * update_chunk_size, len(update_data))
+                    update_chunk = update_data[start_idx:end_idx]
+                    
+                    logger.info(f"Updating wallet chunk {chunk_index + 1}/{total_update_chunks} with {len(update_chunk)} wallets")
+                    
+                    self.client.insert(
+                        "wallets",
+                        update_chunk,
+                        column_names=["walletId", "addressCount", "firstSeenBlock", "lastSeenBlock"],
+                    )
+                
                 logger.info(f"Batch updated {len(update_data)} wallet information")
 
     def process_transactions_in_range(
@@ -384,14 +447,18 @@ class BitcoinWalletGrouper:
             # Deduplicate to reduce query volume
             unique_prev_outputs = list(set(prev_outputs))
 
-            # Step 2: Batch query all relevant output addresses (in batches)
-            # batch_size = 100  # Reduce batch size to prevent overly long SQL queries
+            # Step 2: Batch query all relevant output addresses (in smaller chunks to avoid query size limits)
             all_output_data = {}
+            output_chunk_size = 5000  # Process 5000 outputs per batch to keep query size manageable
 
             logger.info(
                 f"Blocks {current_block}-{batch_end} need to query {len(unique_prev_outputs)} unique output transactions"
             )
-
+            
+            # Split the list of unique outputs into smaller chunks
+            total_chunks = (len(unique_prev_outputs) + output_chunk_size - 1) // output_chunk_size
+            logger.info(f"Processing outputs in {total_chunks} chunks of up to {output_chunk_size} items each")
+            
             outputs_query = """
                 SELECT 
                     txid, 
@@ -400,26 +467,35 @@ class BitcoinWalletGrouper:
                 FROM outputs
                 WHERE (txid, index) IN (%s)
                 """
-
-            # 使用格式化字符串创建参数占位符
-            placeholders = ",".join(["(%s, %s)"] * len(unique_prev_outputs))
-            query = outputs_query % placeholders
-
-            # 先获取所有可能的输出
-            outputs_result = self.client.query(
-                query, [item for sublist in unique_prev_outputs for item in sublist]
-            )
-
-            for output_txid, output_index, address in outputs_result.result_rows:
-                output_txid = (
-                    output_txid.decode("utf-8")
-                    if isinstance(output_txid, bytes)
-                    else output_txid
+                
+            # Process outputs in chunks
+            for chunk_index in range(total_chunks):
+                start_idx = chunk_index * output_chunk_size
+                end_idx = min((chunk_index + 1) * output_chunk_size, len(unique_prev_outputs))
+                chunk = unique_prev_outputs[start_idx:end_idx]
+                
+                logger.info(f"Processing output chunk {chunk_index + 1}/{total_chunks} with {len(chunk)} items")
+                
+                # Create placeholders for this chunk
+                placeholders = ",".join(["(%s, %s)"] * len(chunk))
+                query = outputs_query % placeholders
+                
+                # Query this chunk of outputs
+                outputs_result = self.client.query(
+                    query, [item for sublist in chunk for item in sublist]
                 )
-                address = (
-                    address.decode("utf-8") if isinstance(address, bytes) else address
-                )
-                all_output_data[(output_txid, output_index)] = address
+                
+                # Process this chunk's results
+                for output_txid, output_index, address in outputs_result.result_rows:
+                    output_txid = (
+                        output_txid.decode("utf-8")
+                        if isinstance(output_txid, bytes)
+                        else output_txid
+                    )
+                    address = (
+                        address.decode("utf-8") if isinstance(address, bytes) else address
+                    )
+                    all_output_data[(output_txid, output_index)] = address
 
             logger.debug(f"Output data collected: {len(all_output_data)} entries")
             # Step 3: Join data in Python
