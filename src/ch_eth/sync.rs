@@ -1,6 +1,6 @@
 use ethers::{
     providers::StreamExt,
-    types::{Block, H256},
+    types::{Block, H256}, utils::hex::ToHexExt,
 };
 use klickhouse::{Client, ClientOptions, Row};
 use log::{debug, error, info, warn};
@@ -208,7 +208,7 @@ pub async fn health_check(
 ) {
     let block = client
         .query_one::<BlockHashRow>(format!(
-            "SELECT hex(hash) FROM blocks WHERE number = {}",
+            "SELECT hash FROM blocks WHERE number = {}",
             num
         ))
         .await;
@@ -220,14 +220,11 @@ pub async fn health_check(
     } else {
         let block = block.unwrap();
         let block_on_chain = provider.get_block(num).await.unwrap().unwrap();
-        if format!("0x{}", block.hash.to_lowercase())
-            != format!("{:#032x}", block_on_chain.hash.unwrap())
-        {
+        let block_hash_on_chain = block_on_chain.hash.unwrap().encode_hex_with_prefix();
+        if block.hash != block_hash_on_chain {
             warn!(
                 "fix err block {}: {:?} != {:?}",
-                num,
-                format!("0x{}", block.hash.to_lowercase()),
-                format!("{:#032x}", block_on_chain.hash.unwrap())
+                num, block.hash, block_hash_on_chain
             );
             tokio::try_join!(
                 client.execute(format!("DELETE FROM blocks WHERE number = {} ", num)),
