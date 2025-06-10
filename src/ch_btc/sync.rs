@@ -1,5 +1,6 @@
 use std::error::Error;
 
+use bitcoin::{hashes::Hash, Address};
 use bitcoincore_rpc::RpcApi;
 use klickhouse::{Client, Row};
 use log::{info, warn};
@@ -33,6 +34,24 @@ pub async fn insert_block(
 
     for (tx_index, tx) in block.txdata.iter().enumerate() {
         for (index, vin) in tx.input.iter().enumerate() {
+            let address = if vin.previous_output.txid == bitcoin::Txid::all_zeros()
+            {
+                // Handle coinbase transaction
+                Some("Coinbase".to_string())
+            } else {
+                Address::from_script(
+                    &provider
+                        .get_raw_transaction(&vin.previous_output.txid, None)
+                        .unwrap()
+                        .tx_out(vin.previous_output.vout.try_into().unwrap())
+                        .unwrap()
+                        .script_pubkey,
+                    bitcoin::Network::Bitcoin,
+                )
+                .ok()
+                .map(|s| s.to_string())
+            };
+
             let input_row = InputRow::from_bitcoin_rpc(
                 height,
                 &block,
@@ -40,6 +59,7 @@ pub async fn insert_block(
                 tx_index.try_into().unwrap(),
                 index.try_into().unwrap(),
                 vin,
+                address,
             );
             input_row_list.push(input_row);
         }

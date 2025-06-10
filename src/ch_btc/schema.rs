@@ -1,4 +1,3 @@
-use bitcoin::hashes::Hash;
 use bitcoin::Address;
 use documented::Documented;
 use klickhouse::Row;
@@ -15,7 +14,7 @@ CREATE TABLE IF NOT EXISTS blocks (
     `time` UInt32,
     `bits` UInt32,
     `nonce` UInt32,
-    `difficulty` Float64
+    `difficulty` Float64 CODEC(Gorilla)
 )
 ENGINE = ReplacingMergeTree
 ORDER BY height
@@ -80,10 +79,10 @@ CREATE TABLE IF NOT EXISTS inputs (
     `index` UInt32,
     `prevOutputTxid` FixedString(64),
     `prevOutputVout` UInt32,
-    `scriptSig` String,
-    `scriptSigAsm` String,
+    `scriptSig` String CODEC(ZSTD(6)),
+    `address` Nullable(String) CODEC(ZSTD(6)),
     `sequence` UInt32,
-    `witness` Array(String)
+    `witness` Array(String) CODEC(ZSTD(6))
 )
 ENGINE = ReplacingMergeTree
 ORDER BY (txid, index)
@@ -114,8 +113,8 @@ pub struct InputRow {
 
     /// The script which pushes values on the stack which will cause
     /// the referenced output's script to be accepted.
-    pub script_sig: String,
-    pub script_sig_asm: String,
+    pub script_sig: String, // can be used to infer the public key
+    pub address: Option<String>,
 
     /// The sequence number, which suggests to miners which of two
     /// conflicting transactions should be preferred, or 0xFFFFFFFF
@@ -139,6 +138,7 @@ impl InputRow {
         tx_index: u32,
         index: u32,
         vin: &bitcoin::blockdata::transaction::TxIn,
+        address: Option<String>,
     ) -> Self {
         Self {
             txid: tx.compute_txid().to_string(),
@@ -156,7 +156,7 @@ impl InputRow {
             prev_output_txid: vin.previous_output.txid.to_string(),
             prev_output_vout: vin.previous_output.vout,
             script_sig: vin.script_sig.to_hex_string(),
-            script_sig_asm: vin.script_sig.to_asm_string(),
+            address,
             sequence: vin.sequence.0,
             witness: vin.witness.iter().map(|w| hex::encode(w)).collect(),
         }
@@ -178,9 +178,8 @@ CREATE TABLE IF NOT EXISTS outputs (
     `blockTime` UInt32,
     `index` UInt32,
     `value` UInt64,
-    `scriptPubkey` String,
-    `scriptPubkeyAsm` String,
-    `address` Nullable(String)
+    `scriptPubkey` String CODEC(ZSTD(6)),
+    `address` Nullable(String) CODEC(ZSTD(6))
 )
 ENGINE = ReplacingMergeTree
 ORDER BY (txid, index)
@@ -207,7 +206,6 @@ pub struct OutputRow {
     pub value: u64,
     /// The script which must be satisfied for the output to be spent.
     pub script_pubkey: String,
-    pub script_pubkey_asm: String,
     pub address: Option<String>,
 }
 
@@ -235,7 +233,6 @@ impl OutputRow {
             index: index as u32,
             value: vout.value.to_sat(),
             script_pubkey: vout.script_pubkey.to_hex_string(),
-            script_pubkey_asm: vout.script_pubkey.to_asm_string(),
             // Attempt to derive an address from the script_pubkey.
             address: Address::from_script(&vout.script_pubkey, bitcoin::Network::Bitcoin)
                 .ok()

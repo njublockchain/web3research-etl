@@ -1,5 +1,6 @@
 use std::error::Error;
 
+use bitcoin::{hashes::Hash, Address};
 use bitcoincore_rpc::RpcApi;
 use documented::Documented;
 use log::{info, warn};
@@ -88,8 +89,33 @@ pub(crate) async fn init(
 
         for (tx_index, tx) in block.txdata.iter().enumerate() {
             for (index, vin) in tx.input.iter().enumerate() {
-                let input_row =
-                    InputRow::from_bitcoin_rpc(height, &block, tx, tx_index.try_into().unwrap(), index.try_into().unwrap(), vin);
+                let address = if vin.previous_output.txid == bitcoin::Txid::all_zeros()
+                {
+                    // Handle coinbase transaction
+                    Some("Coinbase".to_string())
+                } else {
+                    Address::from_script(
+                        &provider
+                            .get_raw_transaction(&vin.previous_output.txid, None)
+                            .unwrap()
+                            .tx_out(vin.previous_output.vout.try_into().unwrap())
+                            .unwrap()
+                            .script_pubkey,
+                        bitcoin::Network::Bitcoin,
+                    )
+                    .ok()
+                    .map(|s| s.to_string())
+                };
+
+                let input_row = InputRow::from_bitcoin_rpc(
+                    height,
+                    &block,
+                    tx,
+                    tx_index.try_into().unwrap(),
+                    index.try_into().unwrap(),
+                    vin,
+                    address,
+                );
 
                 input_row_list.push(input_row);
             }
@@ -99,7 +125,7 @@ pub(crate) async fn init(
                     height,
                     &block,
                     tx,
-                    tx_index.try_into().unwrap(), 
+                    tx_index.try_into().unwrap(),
                     index.try_into().unwrap(),
                     vout,
                 );
