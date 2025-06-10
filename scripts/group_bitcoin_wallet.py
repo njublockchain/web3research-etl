@@ -1,3 +1,6 @@
+"""
+Bitcoin Wallet Grouping Script
+"""
 import os
 import traceback
 import uuid
@@ -368,7 +371,7 @@ class BitcoinWalletGrouper:
         self, start_block: int, end_block: int, batch_size: int = 1000
     ):
         """
-        No-JOIN optimized version: Query in two steps to avoid using JOIN
+        Simplified version: Directly query addresses from inputs table
 
         Args:
             start_block: Start block
@@ -384,19 +387,19 @@ class BitcoinWalletGrouper:
 
             logger.info(f"Processing blocks {current_block}-{batch_end}")
 
-            # Step 1: Get transaction input information matching conditions (without using JOIN)
+            # Simplified query: Get transactions with multiple inputs and their addresses directly
             inputs_query = f"""
             SELECT 
                 txid,
-                count(txid) as vin_count,
                 blockHeight,
-                groupArray(prevOutputTxid) as prev_txids,
-                groupArray(prevOutputVout) as prev_vouts
+                groupArray(address) as addresses
             FROM inputs
             PREWHERE blockHeight BETWEEN {current_block} AND {batch_end}
-            WHERE prevOutputTxid != '0000000000000000000000000000000000000000000000000000000000000000'
+            WHERE address IS NOT NULL 
+              AND address != 'Coinbase'
+              AND prevOutputTxid != '0000000000000000000000000000000000000000000000000000000000000000'
             GROUP BY txid, blockHeight
-            HAVING vin_count >= 2
+            HAVING length(addresses) >= 2
             """
 
             inputs_result = self.client.query(inputs_query)
@@ -406,139 +409,49 @@ class BitcoinWalletGrouper:
                 current_block = batch_end + 1
                 continue
 
-            # Collect all output transactions and indices that need to be queried
-            prev_outputs = []
-            txid_to_inputs = {}
+            logger.info(f"Found {len(inputs_result.result_rows)} transactions that need aggregation")
 
-            for (
-                txid,
-                _,
-                block_height,
-                prev_txids,
-                prev_vouts,
-            ) in inputs_result.result_rows:
-                # convert bytes to str
-                txid = txid.decode("utf-8") if isinstance(txid, bytes) else txid
-                prev_txids = [
-                    tx.decode("utf-8") if isinstance(tx, bytes) else tx
-                    for tx in prev_txids
-                ]
-                prev_vouts = [
-                    vout.decode("utf-8") if isinstance(vout, bytes) else vout
-                    for vout in prev_vouts
-                ]
-
-                txid_to_inputs[txid] = {
-                    "blockHeight": block_height,
-                    "prev_outputs": [],
-                }
-
-                for i in range(len(prev_txids)):
-                    prev_outputs.append((prev_txids[i], prev_vouts[i]))
-                    txid_to_inputs[txid]["prev_outputs"].append(
-                        (prev_txids[i], prev_vouts[i])
-                    )
-
-            if not prev_outputs:
-                logger.info(f"Blocks {current_block}-{batch_end} have no valid input transactions")
-                current_block = batch_end + 1
-                continue
-
-            # Deduplicate to reduce query volume
-            unique_prev_outputs = list(set(prev_outputs))
-
-            # Step 2: Batch query all relevant output addresses (in smaller chunks to avoid query size limits)
-            all_output_data = {}
-            output_chunk_size = 5000  # Process 5000 outputs per batch to keep query size manageable
-
-            logger.info(
-                f"Blocks {current_block}-{batch_end} need to query {len(unique_prev_outputs)} unique output transactions"
-            )
-            
-            # Split the list of unique outputs into smaller chunks
-            total_chunks = (len(unique_prev_outputs) + output_chunk_size - 1) // output_chunk_size
-            logger.info(f"Processing outputs in {total_chunks} chunks of up to {output_chunk_size} items each")
-            
-            outputs_query = """
-                SELECT 
-                    txid, 
-                    index, 
-                    address
-                FROM outputs
-                WHERE (txid, index) IN (%s)
-                """
-                
-            # Process outputs in chunks
-            for chunk_index in range(total_chunks):
-                start_idx = chunk_index * output_chunk_size
-                end_idx = min((chunk_index + 1) * output_chunk_size, len(unique_prev_outputs))
-                chunk = unique_prev_outputs[start_idx:end_idx]
-                
-                logger.info(f"Processing output chunk {chunk_index + 1}/{total_chunks} with {len(chunk)} items")
-                
-                # Create placeholders for this chunk
-                placeholders = ",".join(["(%s, %s)"] * len(chunk))
-                query = outputs_query % placeholders
-                
-                # Query this chunk of outputs
-                outputs_result = self.client.query(
-                    query, [item for sublist in chunk for item in sublist]
-                )
-                
-                # Process this chunk's results
-                for output_txid, output_index, address in outputs_result.result_rows:
-                    output_txid = (
-                        output_txid.decode("utf-8")
-                        if isinstance(output_txid, bytes)
-                        else output_txid
-                    )
-                    address = (
-                        address.decode("utf-8") if isinstance(address, bytes) else address
-                    )
-                    all_output_data[(output_txid, output_index)] = address
-
-            logger.debug(f"Output data collected: {len(all_output_data)} entries")
-            # Step 3: Join data in Python
+            # Collect all involved addresses
+            all_addresses = set()
             transactions_addresses = {}
 
-            for txid, inputs_data in txid_to_inputs.items():
-                addresses = set()
-                for prev_txid, prev_vout in inputs_data["prev_outputs"]:
-                    address = all_output_data.get((prev_txid, prev_vout))
-                    if address:
-                        addresses.add(address)
-
-                if len(addresses) >= 2:  # Only aggregate with 2 or more addresses
-                    transactions_addresses[txid] = addresses
+            for txid, block_height, addresses in inputs_result.result_rows:
+                # Convert bytes to str if needed
+                txid = txid.decode("utf-8") if isinstance(txid, bytes) else txid
+                
+                # Filter out None/empty addresses and convert to set
+                valid_addresses = set()
+                for addr in addresses:
+                    if addr:
+                        addr = addr.decode("utf-8") if isinstance(addr, bytes) else addr
+                        if addr and addr != "Coinbase":
+                            valid_addresses.add(addr)
+                
+                if len(valid_addresses) >= 2:
+                    transactions_addresses[txid] = valid_addresses
+                    all_addresses.update(valid_addresses)
 
             if not transactions_addresses:
                 logger.info(f"Blocks {current_block}-{batch_end} have no transactions to aggregate")
                 current_block = batch_end + 1
                 continue
 
-            logger.info(f"Found {len(transactions_addresses)} transactions that need aggregation")
-
-            # Collect all involved addresses
-            all_addresses = set()
-            for addresses in transactions_addresses.values():
-                all_addresses.update(addresses)
+            logger.info(f"Processing {len(transactions_addresses)} transactions with {len(all_addresses)} unique addresses")
 
             # Batch get existing wallet mappings
             address_to_wallet = self.batch_get_existing_wallets(all_addresses)
 
-            # Prepare transaction data
+            # Prepare transaction data using block heights from the original query
             transactions_data = []
+            block_height_map = {}
+            
+            # Create a mapping of txid to block_height from original results
+            for txid, block_height, addresses in inputs_result.result_rows:
+                txid = txid.decode("utf-8") if isinstance(txid, bytes) else txid
+                block_height_map[txid] = block_height
+            
             for txid, addresses in transactions_addresses.items():
-                # Get block height
-                block_height_result = self.client.query(
-                    "SELECT blockHeight FROM inputs WHERE txid = %s LIMIT 1", [txid]
-                )
-                block_height = (
-                    block_height_result.result_rows[0][0]
-                    if block_height_result.result_rows
-                    else current_block
-                )
-
+                block_height = block_height_map.get(txid, current_block)
                 transactions_data.append((txid, addresses, block_height))
 
             # Batch process wallet operations
@@ -655,7 +568,7 @@ class BitcoinWalletGrouper:
             # Clear existing data
             self.client.command("TRUNCATE TABLE wallets")
             self.client.command("TRUNCATE TABLE walletAddresses")
-            self.client.command("TRUNCATE TABLE wallet_grouping_progress")
+            self.client.command("TRUNCATE TABLE taskProgress")
 
             # Get latest block height
             latest_block_result = self.client.query("SELECT max(height) FROM blocks")
