@@ -86,7 +86,7 @@ impl BlockRow {
     to               Nullable(String),
     value            UInt256,
     nonce            UInt64,
-    input            String,
+    input            String CODEC(ZSTD(6)),
     gas              UInt256,
     gasPrice         Nullable(UInt256),
     maxFeePerGas     Nullable(UInt256),
@@ -94,7 +94,6 @@ impl BlockRow {
     r                UInt256,
     s                UInt256,
     v                UInt64,
-    accessList       Nullable(String),
     contractAddress  Nullable(String),
     cumulativeGasUsed UInt256,
     effectiveGasPrice Nullable(UInt256),
@@ -242,7 +241,7 @@ impl AccessListItemRow {
     `topic1` Nullable(FixedString(66)),
     `topic2` Nullable(FixedString(66)),
     `topic3` Nullable(FixedString(66)),
-    `data` String
+    `data` String CODEC(ZSTD(6))
 )
 ENGINE = ReplacingMergeTree
 ORDER BY (removed, address, topic0, topic1, topic2, topic3, transactionHash, logIndex)
@@ -296,13 +295,13 @@ impl EventRow {
 }
 
 /** CREATE TABLE IF NOT EXISTS withdraws (
-    blockHash FixedString(66),
-    blockNumber UInt64,
-    blockTimestamp UInt64,
-    `index` UInt64,
-    validatorIndex UInt64,
-    address String,
-    amount UInt256
+    `blockHash`      FixedString(66),
+    `blockNumber`    UInt64,
+    `blockTimestamp` UInt64,
+    `index`          UInt64,
+    `validatorIndex` UInt64,
+    `address`        String,
+    `amount`         UInt256
 ) ENGINE=ReplacingMergeTree
 ORDER BY (blockHash, index);
 */
@@ -344,17 +343,17 @@ impl WithdrawalRow {
     `traceAddress` Array(UInt64),
     `subtraces` UInt64,
     `transactionPosition` Nullable(UInt64),
-    `error` Nullable(String),
+    `error` Nullable(String) CODEC(ZSTD(6)),
     `actionType` LowCardinality(String),
     `actionCallFrom` Nullable(String),
     `actionCallTo` Nullable(String),
     `actionCallValue` Nullable(UInt256),
-    `actionCallInput` Nullable(String),
+    `actionCallInput` Nullable(String) CODEC(ZSTD(6)),
     `actionCallGas` Nullable(UInt256),
     `actionCallType` LowCardinality(String),
     `actionCreateFrom` Nullable(String),
     `actionCreateValue` Nullable(UInt256),
-    `actionCreateInit` Nullable(String),
+    `actionCreateInit` Nullable(String) CODEC(ZSTD(6)),
     `actionCreateGas` Nullable(UInt256),
     `actionSuicideAddress` Nullable(String),
     `actionSuicideRefundAddress` Nullable(String),
@@ -364,13 +363,13 @@ impl WithdrawalRow {
     `actionRewardType` LowCardinality(String),
     `resultType` LowCardinality(String),
     `resultCallGasUsed` Nullable(UInt256),
-    `resultCallOutput` Nullable(String),
+    `resultCallOutput` Nullable(String) CODEC(ZSTD(6)),
     `resultCreateGasUsed` Nullable(UInt256),
-    `resultCreateCode` Nullable(String),
+    `resultCreateCode` Nullable(String) CODEC(ZSTD(6)),
     `resultCreateAddress` Nullable(String)
 )
 ENGINE = ReplacingMergeTree
-ORDER BY (blockNumber, blockPos);
+ORDER BY (blockNumber, blockHash, transactionHash)
 */
 #[derive(Row, Clone, Debug, Documented)]
 #[klickhouse(rename_all = "camelCase")]
