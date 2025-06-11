@@ -76,7 +76,6 @@ impl BlockRow {
 
 /** CREATE TABLE IF NOT EXISTS transactions (
     hash             FixedString(66),
-    blockHash        FixedString(66),
     blockNumber      UInt64,
     blockTimestamp   UInt64,
     transactionIndex UInt64,
@@ -91,23 +90,23 @@ impl BlockRow {
     gasPrice         Nullable(UInt256),
     maxFeePerGas     Nullable(UInt256),
     maxPriorityFeePerGas Nullable(UInt256),
-    r                UInt256,
-    s                UInt256,
-    v                UInt64,
+    -- r                UInt256,
+    -- s                UInt256,
+    -- v                UInt64,
     contractAddress  Nullable(String),
     cumulativeGasUsed UInt256,
     effectiveGasPrice Nullable(UInt256),
     gasUsed          UInt256,
     status           Nullable(UInt64)
 ) ENGINE=ReplacingMergeTree
-ORDER BY (blockNumber, blockTimestamp, blockHash, from, nonce, to, transactionIndex, hash)
+ORDER BY (blockNumber, blockTimestamp, from, nonce, to, transactionIndex, hash)
 SETTINGS index_granularity = 8192, allow_nullable_key=1;
 */
 #[derive(Row, Clone, Debug, Default, Documented)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct TransactionRow {
     pub hash: String,
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_number: u64,
     pub block_timestamp: u64,
     pub transaction_index: u64,
@@ -122,9 +121,9 @@ pub struct TransactionRow {
     pub gas_price: Option<u256>,
     pub max_fee_per_gas: Option<u256>,
     pub max_priority_fee_per_gas: Option<u256>,
-    pub r: u256,
-    pub s: u256,
-    pub v: u64,
+    // pub r: u256,
+    // pub s: u256,
+    // pub v: u64,
     pub contract_address: Option<String>,
     pub cumulative_gas_used: u256,
     pub effective_gas_price: Option<u256>,
@@ -143,7 +142,7 @@ impl TransactionRow {
     {
         Self {
             hash: transaction.hash.encode_hex_with_prefix(),
-            block_hash: transaction.block_hash.unwrap().encode_hex_with_prefix(),
+            // block_hash: transaction.block_hash.unwrap().encode_hex_with_prefix(),
             block_number: transaction.block_number.unwrap().as_u64(),
             block_timestamp: block.timestamp.as_u64(),
             transaction_index: transaction.transaction_index.unwrap().as_u64(),
@@ -160,9 +159,9 @@ impl TransactionRow {
             max_priority_fee_per_gas: transaction
                 .max_priority_fee_per_gas
                 .map(|fee| u256(fee.into())),
-            r: u256(transaction.r.into()),
-            s: u256(transaction.s.into()),
-            v: transaction.v.as_u64(),
+            // r: u256(transaction.r.into()),
+            // s: u256(transaction.s.into()),
+            // v: transaction.v.as_u64(),
             contract_address: receipt
                 .contract_address
                 .map(|contract| contract.encode_hex_with_prefix()),
@@ -176,7 +175,6 @@ impl TransactionRow {
 
 /**
 CREATE TABLE IF NOT EXISTS accessListItems (
-    blockHash        FixedString(66),
     blockNumber      UInt64,
     blockTimestamp   UInt64,
     transactionIndex UInt64,
@@ -186,13 +184,13 @@ CREATE TABLE IF NOT EXISTS accessListItems (
     storageKey       Array(FixedString(66))
 )
 ENGINE = ReplacingMergeTree
-ORDER BY (blockNumber, blockHash, transactionIndex, transactionHash, itemIndex)
+ORDER BY (blockNumber, transactionIndex, transactionHash, itemIndex)
 SETTINGS index_granularity = 8192, allow_nullable_key=1;
  */
 #[derive(Row, Clone, Debug, Default, Documented)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct AccessListItemRow {
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_number: u64,
     pub block_timestamp: u64,
     pub transaction_index: u64,
@@ -213,7 +211,7 @@ impl AccessListItemRow {
         T: serde::ser::Serialize,
     {
         Self {
-            block_hash: transaction.block_hash.unwrap().encode_hex_with_prefix(),
+            // block_hash: transaction.block_hash.unwrap().encode_hex_with_prefix(),
             block_number: transaction.block_number.unwrap().as_u64(),
             block_timestamp: block.timestamp.as_u64(),
             transaction_index: transaction.transaction_index.unwrap().as_u64(),
@@ -229,7 +227,6 @@ impl AccessListItemRow {
     }
 }
 /** CREATE TABLE IF NOT EXISTS events (
-    `blockHash` FixedString(66),
     `blockNumber` UInt64,
     `blockTimestamp` UInt64,
     `transactionHash` FixedString(66),
@@ -250,7 +247,7 @@ SETTINGS index_granularity = 8192, allow_nullable_key=1;
 #[derive(Row, Clone, Debug, Default, Documented)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct EventRow {
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_number: u64,
     pub block_timestamp: u64,
     pub transaction_hash: String,
@@ -277,7 +274,7 @@ impl EventRow {
             .collect();
 
         Self {
-            block_hash: log.block_hash.unwrap().encode_hex_with_prefix(),
+            // block_hash: log.block_hash.unwrap().encode_hex_with_prefix(),
             block_number: log.block_number.unwrap().as_u64(),
             block_timestamp: block.timestamp.as_u64(),
             transaction_hash: transaction.hash.encode_hex_with_prefix(),
@@ -295,7 +292,6 @@ impl EventRow {
 }
 
 /** CREATE TABLE IF NOT EXISTS withdraws (
-    `blockHash`      FixedString(66),
     `blockNumber`    UInt64,
     `blockTimestamp` UInt64,
     `index`          UInt64,
@@ -303,12 +299,13 @@ impl EventRow {
     `address`        String,
     `amount`         UInt256
 ) ENGINE=ReplacingMergeTree
-ORDER BY (blockHash, index);
+ORDER BY (blockNumber, index)
+SETTINGS index_granularity = 8192, allow_nullable_key=1;
 */
 #[derive(Row, Clone, Debug, Default, Documented)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct WithdrawalRow {
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_number: u64,
     pub block_timestamp: u64,
     pub index: u64,
@@ -323,7 +320,7 @@ impl WithdrawalRow {
         T: serde::ser::Serialize,
     {
         Self {
-            block_hash: block.hash.unwrap().encode_hex_with_prefix(),
+            // block_hash: block.hash.unwrap().encode_hex_with_prefix(),
             block_number: block.number.unwrap().as_u64(),
             block_timestamp: block.timestamp.as_u64(),
             index: withdraw.index.as_u64(),
@@ -335,10 +332,9 @@ impl WithdrawalRow {
 }
 
 /** CREATE TABLE IF NOT EXISTS traces (
-    `blockPos`    UInt64,
+    `blockPosition`    UInt64,
     `blockNumber` UInt64,
     `blockTimestamp` UInt64,
-    `blockHash` FixedString(66),
     `transactionHash` Nullable(FixedString(66)),
     `traceAddress` Array(UInt64),
     `subtraces` UInt64,
@@ -369,17 +365,18 @@ impl WithdrawalRow {
     `resultCreateAddress` Nullable(String)
 )
 ENGINE = ReplacingMergeTree
-ORDER BY (blockNumber, blockHash, transactionHash)
+ORDER BY (blockNumber, transactionHash, blockPosition, transactionPosition)
+SETTINGS index_granularity = 8192, allow_nullable_key=1;
 */
 #[derive(Row, Clone, Debug, Documented)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct TraceRow {
-    pub block_pos: u64,
+    pub block_position: u64,
     /// Block Number
     pub block_number: u64,
     pub block_timestamp: u64,
     /// Block Hash
-    pub block_hash: String,
+    // pub block_hash: String,
 
     /// Trace address, The list of addresses where the call was executed, the address of the parents, and the order of the current sub call
     pub trace_address: Vec<u64>,
@@ -434,7 +431,7 @@ impl TraceRow {
         T: serde::ser::Serialize,
     {
         let mut trace_row = Self {
-            block_pos: index as u64,
+            block_position: index as u64,
             action_type: to_variant_name(&trace.action_type).unwrap().to_string(),
             action_call_from: None,
             action_call_to: None,
@@ -464,7 +461,7 @@ impl TraceRow {
             transaction_hash: trace.transaction_hash.map(|h| h.encode_hex_with_prefix()),
             block_number: trace.block_number,
             block_timestamp: block.timestamp.as_u64(),
-            block_hash: trace.block_hash.encode_hex_with_prefix(),
+            // block_hash: trace.block_hash.encode_hex_with_prefix(),
             error: trace.error.clone(),
         };
 

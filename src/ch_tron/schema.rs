@@ -75,8 +75,8 @@ pub fn len_20_addr_from_any_vec(any_addr: Vec<u8>) -> String {
     `witnessId` Int64,
     `witnessAddress` String,
     `version` Int32,
-    `witnessSignature` String,
-    `transactionCount` Int32
+    -- `witnessSignature` String,
+    `transactionCount` UInt32
 ) ENGINE = ReplacingMergeTree
 ORDER BY (number, timestamp, hash)
 SETTINGS index_granularity = 8192; */
@@ -90,7 +90,8 @@ pub struct BlockRow {
     pub witness_id: i64,
     pub witness_address: String,
     pub version: i32,
-    pub witness_signature: String,
+
+    pub transaction_count: u32,
 }
 
 impl BlockRow {
@@ -110,7 +111,7 @@ impl BlockRow {
                 hex::encode(header_raw_data.witness_address) // for the genesis phase
             },
             version: header_raw_data.version,
-            witness_signature: hex::encode(header.witness_signature),
+            transaction_count: block.transactions.len().try_into().unwrap(),
         }
     }
 }
@@ -118,7 +119,6 @@ impl BlockRow {
 /** CREATE TABLE IF NOT EXISTS transactions
 (
     `blockNumber` UInt64,
-    `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
     `index` UInt64,
     `hash` FixedString(64),
@@ -134,7 +134,7 @@ impl BlockRow {
     `scripts` String,
     `timestamp` UInt64,
     `feeLimit` Int64,
-    `signature` Array(String),
+    -- `signature` Array(String),
     `constantResult` String,
     `fee` Int64,
     `contractResult` Nullable(String),
@@ -174,7 +174,7 @@ SETTINGS index_granularity = 8192, allow_nullable_key=1; */
 #[klickhouse(rename_all = "camelCase")]
 pub struct TransactionRow {
     pub block_number: u64,
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_timestamp: u64,
     pub index: u64,
     pub hash: String,
@@ -194,7 +194,7 @@ pub struct TransactionRow {
     pub timestamp: u64,
     pub fee_limit: i64,
 
-    pub signature: Vec<String>,
+    // pub signature: Vec<String>,
     pub constant_result: String,
 
     pub fee: i64,
@@ -282,7 +282,7 @@ impl TransactionRow {
 
         Self {
             block_number: block.number,
-            block_hash: block.hash.clone(),
+            // block_hash: block.hash.clone(),
             block_timestamp: block.timestamp,
             index,
             hash: hex::encode(transaction.txid.clone()),
@@ -312,11 +312,11 @@ impl TransactionRow {
             scripts: hex::encode(tx_raw_data.scripts),
             timestamp: tx_raw_data.timestamp.try_into().unwrap(),
             fee_limit: tx_raw_data.fee_limit,
-            signature: tx
-                .signature
-                .iter()
-                .map(|sig| hex::encode(sig.clone()))
-                .collect(),
+            // signature: tx
+            //     .signature
+            //     .iter()
+            //     .map(|sig| hex::encode(sig.clone()))
+            //     .collect(),
             constant_result: if transaction.constant_result.is_empty() {
                 String::default()
             } else {
@@ -401,7 +401,6 @@ impl TransactionRow {
 /** CREATE TABLE IF NOT EXISTS events
 (
     `blockNumber` UInt64,
-    `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
@@ -420,7 +419,7 @@ SETTINGS index_granularity = 8192, allow_nullable_key=1; */
 #[klickhouse(rename_all = "camelCase")]
 pub struct LogRow {
     pub block_number: u64,
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_timestamp: u64,
     pub transaction_hash: String,
     pub transaction_index: u64,
@@ -446,7 +445,7 @@ impl LogRow {
 
         Self {
             block_number: block_row.number,
-            block_hash: block_row.hash.clone(),
+            // block_hash: block_row.hash.clone(),
             block_timestamp: block_row.timestamp,
             transaction_index: transaction_row.index,
             transaction_hash: transaction_row.hash.clone(),
@@ -464,7 +463,6 @@ impl LogRow {
 /** CREATE TABLE IF NOT EXISTS internals
 (
     `blockNumber` UInt64,
-    `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
@@ -487,13 +485,13 @@ SETTINGS index_granularity = 8192; */
 #[klickhouse(rename_all = "camelCase")]
 pub struct InternalTransactionRow {
     pub block_number: u64,
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_timestamp: u64,
     pub transaction_index: u64,
     pub transaction_hash: String,
     pub internal_index: i32,
 
-    pub hash: String,
+    // pub hash: String,
     pub caller_address: String,
     pub transfer_to_address: String,
 
@@ -521,13 +519,13 @@ impl InternalTransactionRow {
 
         Self {
             block_number: block.number,
-            block_hash: block.hash.clone(),
+            // block_hash: block.hash.clone(),
             block_timestamp: block.timestamp,
             transaction_hash: transaction.hash.clone(),
             transaction_index: transaction.index,
             internal_index,
 
-            hash: hex::encode(internal.hash.clone()),
+            // hash: hex::encode(internal.hash.clone()),
             caller_address: len_20_addr_from_any_vec(internal.caller_address.clone()),
             transfer_to_address: len_20_addr_from_any_vec(internal.transfer_to_address.clone()),
             call_value_infos_token_id,
@@ -544,7 +542,6 @@ impl InternalTransactionRow {
 /** CREATE TABLE IF NOT EXISTS accountCreateContracts
 (
     `blockNumber` UInt64,
-    `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
@@ -560,7 +557,7 @@ SETTINGS index_granularity = 8192; */
 #[klickhouse(rename_all = "camelCase")]
 pub struct AccountCreateContractRow {
     pub block_number: u64,
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_timestamp: u64,
     pub transaction_index: u64,
     pub transaction_hash: String,
@@ -580,7 +577,7 @@ impl AccountCreateContractRow {
     ) -> Self {
         Self {
             block_number: block.number,
-            block_hash: block.hash.clone(),
+            // block_hash: block.hash.clone(),
             block_timestamp: block.timestamp,
             transaction_hash: transaction.hash.clone(),
             transaction_index: transaction.index,
@@ -596,7 +593,6 @@ impl AccountCreateContractRow {
 /** CREATE TABLE IF NOT EXISTS transferContracts
 (
     `blockNumber` UInt64,
-    `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
@@ -614,7 +610,7 @@ SETTINGS index_granularity = 8192;
 #[klickhouse(rename_all = "camelCase")]
 pub struct TransferContractRow {
     pub block_number: u64,
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_timestamp: u64,
     pub transaction_hash: String,
     pub transaction_index: u64,
@@ -634,7 +630,7 @@ impl TransferContractRow {
     ) -> Self {
         Self {
             block_number: block.number,
-            block_hash: block.hash.clone(),
+            // block_hash: block.hash.clone(),
             block_timestamp: block.timestamp,
             transaction_hash: transaction.hash.clone(),
             transaction_index: transaction.index,
@@ -650,7 +646,6 @@ impl TransferContractRow {
 /** CREATE TABLE IF NOT EXISTS transferAssetContracts
 (
     `blockNumber` UInt64,
-    `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
@@ -667,7 +662,7 @@ SETTINGS index_granularity = 8192; */
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct TransferAssetContractRow {
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_number: u64,
     pub block_timestamp: u64,
     pub transaction_hash: String,
@@ -689,7 +684,7 @@ impl TransferAssetContractRow {
     ) -> Self {
         Self {
             block_number: block.number,
-            block_hash: block.hash.clone(),
+            // block_hash: block.hash.clone(),
             block_timestamp: block.timestamp,
             transaction_hash: transaction.hash.clone(),
             transaction_index: transaction.index,
@@ -706,7 +701,6 @@ impl TransferAssetContractRow {
 /** CREATE TABLE IF NOT EXISTS voteAssetContracts
 (
     `blockNumber` UInt64,
-    `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
@@ -723,7 +717,7 @@ SETTINGS index_granularity = 8192; */
 #[klickhouse(rename_all = "camelCase")]
 pub struct VoteAssetContractRow {
     pub block_number: u64,
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_timestamp: u64,
     pub transaction_hash: String,
     pub transaction_index: u64,
@@ -744,7 +738,7 @@ impl VoteAssetContractRow {
     ) -> Self {
         Self {
             block_number: block.number,
-            block_hash: block.hash.clone(),
+            // block_hash: block.hash.clone(),
             block_timestamp: block.timestamp,
             transaction_hash: transaction.hash.clone(),
             transaction_index: transaction.index,
@@ -764,7 +758,6 @@ impl VoteAssetContractRow {
 
 /** CREATE TABLE IF NOT EXISTS voteWitnessContracts (
     `blockNumber` UInt64,
-    `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
@@ -782,7 +775,7 @@ SETTINGS index_granularity = 8192;  */
 #[derive(Row, Documented, Clone, Debug, Default)]
 #[klickhouse(rename_all = "camelCase")]
 pub struct VoteWitnessContractRow {
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_number: u64,
     pub block_timestamp: u64,
     pub transaction_hash: String,
@@ -806,7 +799,7 @@ impl VoteWitnessContractRow {
     ) -> Self {
         Self {
             block_number: block.number,
-            block_hash: block.hash.clone(),
+            // block_hash: block.hash.clone(),
             block_timestamp: block.timestamp,
             transaction_hash: transaction.hash.clone(),
             transaction_index: transaction.index,
@@ -842,7 +835,6 @@ impl Vote {
 
 /** CREATE TABLE IF NOT EXISTS witnessCreateContracts (
     `blockNumber` UInt64,
-    `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
@@ -857,7 +849,7 @@ ORDER BY (ownerAddress, url, blockNumber, transactionHash, contractIndex)
 #[klickhouse(rename_all = "camelCase")]
 pub struct WitnessCreateContractRow {
     pub block_number: u64,
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_timestamp: u64,
     pub transaction_hash: String,
     pub transaction_index: u64,
@@ -876,7 +868,7 @@ impl WitnessCreateContractRow {
     ) -> Self {
         Self {
             block_number: block.number,
-            block_hash: block.hash.clone(),
+            // block_hash: block.hash.clone(),
             block_timestamp: block.timestamp,
             transaction_hash: transaction.hash.clone(),
             transaction_index: transaction.index,
@@ -890,7 +882,6 @@ impl WitnessCreateContractRow {
 
 /** CREATE TABLE IF NOT EXISTS assetIssueContracts (
     `blockNumber` UInt64,
-    `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
@@ -922,7 +913,7 @@ SETTINGS index_granularity = 8192;
 #[klickhouse(rename_all = "camelCase")]
 pub struct AssetIssueContractRow {
     pub block_number: u64,
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_timestamp: u64,
     pub transaction_hash: String,
     pub transaction_index: u64,
@@ -957,7 +948,7 @@ impl AssetIssueContractRow {
     ) -> Self {
         Self {
             block_number: block.number,
-            block_hash: block.hash.clone(),
+            // block_hash: block.hash.clone(),
             block_timestamp: block.timestamp,
             transaction_hash: transaction.hash.clone(),
             transaction_index: transaction.index,
@@ -988,7 +979,6 @@ impl AssetIssueContractRow {
 /**
 CREATE TABLE IF NOT EXISTS witnessUpdateContracts (
     `blockNumber` UInt64,
-    `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
@@ -1004,7 +994,7 @@ SETTINGS index_granularity = 8192;
 #[klickhouse(rename_all = "camelCase")]
 pub struct WitnessUpdateContractRow {
     pub block_number: u64,
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_timestamp: u64,
     pub transaction_hash: String,
     pub transaction_index: u64,
@@ -1023,7 +1013,7 @@ impl WitnessUpdateContractRow {
     ) -> Self {
         Self {
             block_number: block.number,
-            block_hash: block.hash.clone(),
+            // block_hash: block.hash.clone(),
             block_timestamp: block.timestamp,
             transaction_hash: transaction.hash.clone(),
             transaction_index: transaction.index,
@@ -1037,7 +1027,6 @@ impl WitnessUpdateContractRow {
 
 /** CREATE TABLE IF NOT EXISTS participateAssetIssueContracts (
     `blockNumber` UInt64,
-    `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
@@ -1054,7 +1043,7 @@ ORDER BY (ownerAddress, toAddress, assetName, blockNumber, transactionHash, cont
 #[klickhouse(rename_all = "camelCase")]
 pub struct ParticipateAssetIssueContractRow {
     pub block_number: u64,
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_timestamp: u64,
     pub transaction_hash: String,
     pub transaction_index: u64,
@@ -1075,7 +1064,7 @@ impl ParticipateAssetIssueContractRow {
     ) -> Self {
         Self {
             block_number: block.number,
-            block_hash: block.hash.clone(),
+            // block_hash: block.hash.clone(),
             block_timestamp: block.timestamp,
             transaction_hash: transaction.hash.clone(),
             transaction_index: transaction.index,
@@ -1091,7 +1080,6 @@ impl ParticipateAssetIssueContractRow {
 
 /** CREATE TABLE IF NOT EXISTS accountUpdateContracts (
     `blockNumber` UInt64,
-    `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
@@ -1107,7 +1095,7 @@ SETTINGS index_granularity = 8192;
 #[klickhouse(rename_all = "camelCase")]
 pub struct AccountUpdateContractRow {
     pub block_number: u64,
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_timestamp: u64,
     pub transaction_hash: String,
     pub transaction_index: u64,
@@ -1126,7 +1114,7 @@ impl AccountUpdateContractRow {
     ) -> Self {
         Self {
             block_number: block.number,
-            block_hash: block.hash.clone(),
+            // block_hash: block.hash.clone(),
             block_timestamp: block.timestamp,
             transaction_hash: transaction.hash.clone(),
             transaction_index: transaction.index,
@@ -1140,7 +1128,6 @@ impl AccountUpdateContractRow {
 
 /** CREATE TABLE IF NOT EXISTS freezeBalanceContracts (
     `blockNumber` UInt64,
-    `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
@@ -1159,7 +1146,7 @@ SETTINGS index_granularity = 8192;
 #[klickhouse(rename_all = "camelCase")]
 pub struct FreezeBalanceContractRow {
     pub block_number: u64,
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_timestamp: u64,
     pub transaction_hash: String,
     pub transaction_index: u64,
@@ -1180,7 +1167,7 @@ impl FreezeBalanceContractRow {
     ) -> Self {
         Self {
             block_number: block.number,
-            block_hash: block.hash.clone(),
+            // block_hash: block.hash.clone(),
             block_timestamp: block.timestamp,
             transaction_hash: transaction.hash.clone(),
             transaction_index: transaction.index,
@@ -1197,7 +1184,6 @@ impl FreezeBalanceContractRow {
 
 /** CREATE TABLE IF NOT EXISTS unfreezeBalanceContracts (
     `blockNumber` UInt64,
-    `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
@@ -1214,7 +1200,7 @@ SETTINGS index_granularity = 8192;
 #[klickhouse(rename_all = "camelCase")]
 pub struct UnfreezeBalanceContractRow {
     pub block_number: u64,
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_timestamp: u64,
     pub transaction_hash: String,
     pub transaction_index: u64,
@@ -1234,7 +1220,7 @@ impl UnfreezeBalanceContractRow {
     ) -> Self {
         Self {
             block_number: block.number,
-            block_hash: block.hash.clone(),
+            // block_hash: block.hash.clone(),
             block_timestamp: block.timestamp,
             transaction_hash: transaction.hash.clone(),
             transaction_index: transaction.index,
@@ -1249,7 +1235,6 @@ impl UnfreezeBalanceContractRow {
 
 /** CREATE TABLE IF NOT EXISTS withdrawBalanceContracts (
     `blockNumber` UInt64,
-    `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
@@ -1264,7 +1249,7 @@ SETTINGS index_granularity = 8192;
 #[klickhouse(rename_all = "camelCase")]
 pub struct WithdrawBalanceContractRow {
     pub block_number: u64,
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_timestamp: u64,
     pub transaction_hash: String,
     pub transaction_index: u64,
@@ -1282,7 +1267,7 @@ impl WithdrawBalanceContractRow {
     ) -> Self {
         Self {
             block_number: block.number,
-            block_hash: block.hash.clone(),
+            // block_hash: block.hash.clone(),
             block_timestamp: block.timestamp,
             transaction_hash: transaction.hash.clone(),
             transaction_index: transaction.index,
@@ -1295,7 +1280,6 @@ impl WithdrawBalanceContractRow {
 
 /** CREATE TABLE IF NOT EXISTS unfreezeAssetContracts (
     `blockNumber` UInt64,
-    `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
@@ -1310,7 +1294,7 @@ SETTINGS index_granularity = 8192;
 #[klickhouse(rename_all = "camelCase")]
 pub struct UnfreezeAssetContractRow {
     pub block_number: u64,
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_timestamp: u64,
     pub transaction_hash: String,
     pub transaction_index: u64,
@@ -1328,7 +1312,7 @@ impl UnfreezeAssetContractRow {
     ) -> Self {
         Self {
             block_number: block.number,
-            block_hash: block.hash.clone(),
+            // block_hash: block.hash.clone(),
             block_timestamp: block.timestamp,
             transaction_hash: transaction.hash.clone(),
             transaction_index: transaction.index,
@@ -1341,7 +1325,6 @@ impl UnfreezeAssetContractRow {
 
 /** CREATE TABLE IF NOT EXISTS updateAssetContracts (
     `blockNumber` UInt64,
-    `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
@@ -1360,7 +1343,7 @@ SETTINGS index_granularity = 8192;
 #[klickhouse(rename_all = "camelCase")]
 pub struct UpdateAssetContractRow {
     pub block_number: u64,
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_timestamp: u64,
     pub transaction_hash: String,
     pub transaction_index: u64,
@@ -1382,7 +1365,7 @@ impl UpdateAssetContractRow {
     ) -> Self {
         Self {
             block_number: block.number,
-            block_hash: block.hash.clone(),
+            // block_hash: block.hash.clone(),
             block_timestamp: block.timestamp,
             transaction_hash: transaction.hash.clone(),
             transaction_index: transaction.index,
@@ -1399,7 +1382,6 @@ impl UpdateAssetContractRow {
 
 /** CREATE TABLE IF NOT EXISTS proposalCreateContracts (
     `blockNumber` UInt64,
-    `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
@@ -1415,7 +1397,7 @@ SETTINGS index_granularity = 8192;
 #[klickhouse(rename_all = "camelCase")]
 pub struct ProposalCreateContractRow {
     pub block_number: u64,
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_timestamp: u64,
     pub transaction_hash: String,
     pub transaction_index: u64,
@@ -1434,7 +1416,7 @@ impl ProposalCreateContractRow {
     ) -> Self {
         Self {
             block_number: block.number,
-            block_hash: block.hash.clone(),
+            // block_hash: block.hash.clone(),
             block_timestamp: block.timestamp,
             transaction_hash: transaction.hash.clone(),
             transaction_index: transaction.index,
@@ -1448,7 +1430,6 @@ impl ProposalCreateContractRow {
 
 /** CREATE TABLE IF NOT EXISTS proposalApproveContracts (
     `blockNumber` UInt64,
-    `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
@@ -1465,7 +1446,7 @@ SETTINGS index_granularity = 8192;
 #[klickhouse(rename_all = "camelCase")]
 pub struct ProposalApproveContractRow {
     pub block_number: u64,
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_timestamp: u64,
     pub transaction_hash: String,
     pub transaction_index: u64,
@@ -1485,7 +1466,7 @@ impl ProposalApproveContractRow {
     ) -> Self {
         Self {
             block_number: block.number,
-            block_hash: block.hash.clone(),
+            // block_hash: block.hash.clone(),
             block_timestamp: block.timestamp,
             transaction_hash: transaction.hash.clone(),
             transaction_index: transaction.index,
@@ -1500,7 +1481,6 @@ impl ProposalApproveContractRow {
 
 /** CREATE TABLE IF NOT EXISTS proposalDeleteContracts (
     `blockNumber` UInt64,
-    `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
@@ -1516,7 +1496,7 @@ SETTINGS index_granularity = 8192;
 #[klickhouse(rename_all = "camelCase")]
 pub struct ProposalDeleteContractRow {
     pub block_number: u64,
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_timestamp: u64,
     pub transaction_hash: String,
     pub transaction_index: u64,
@@ -1535,7 +1515,7 @@ impl ProposalDeleteContractRow {
     ) -> Self {
         Self {
             block_number: block.number,
-            block_hash: block.hash.clone(),
+            // block_hash: block.hash.clone(),
             block_timestamp: block.timestamp,
             transaction_hash: transaction.hash.clone(),
             transaction_index: transaction.index,
@@ -1549,7 +1529,6 @@ impl ProposalDeleteContractRow {
 
 /** CREATE TABLE IF NOT EXISTS setAccountIdContracts (
     `blockNumber` UInt64,
-    `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
@@ -1565,7 +1544,7 @@ SETTINGS index_granularity = 8192;
 #[klickhouse(rename_all = "camelCase")]
 pub struct SetAccountIdContractRow {
     pub block_number: u64,
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_timestamp: u64,
     pub transaction_hash: String,
     pub transaction_index: u64,
@@ -1584,7 +1563,7 @@ impl SetAccountIdContractRow {
     ) -> Self {
         Self {
             block_number: block.number,
-            block_hash: block.hash.clone(),
+            // block_hash: block.hash.clone(),
             block_timestamp: block.timestamp,
             transaction_hash: transaction.hash.clone(),
             transaction_index: transaction.index,
@@ -1598,7 +1577,6 @@ impl SetAccountIdContractRow {
 
 /** CREATE TABLE IF NOT EXISTS createSmartContracts (
     `blockNumber` UInt64,
-    `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
@@ -1628,7 +1606,7 @@ SETTINGS index_granularity = 8192, allow_nullable_key=1;
 #[klickhouse(rename_all = "camelCase")]
 pub struct CreateSmartContractRow {
     pub block_number: u64,
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_timestamp: u64,
     pub transaction_hash: String,
     pub transaction_index: u64,
@@ -1667,7 +1645,7 @@ impl CreateSmartContractRow {
         let new_contract = call.new_contract.clone();
         Self {
             block_number: block.number,
-            block_hash: block.hash.clone(),
+            // block_hash: block.hash.clone(),
             block_timestamp: block.timestamp,
             transaction_hash: transaction.hash.clone(),
             transaction_index: transaction.index,
@@ -1714,7 +1692,6 @@ impl CreateSmartContractRow {
 
 /** CREATE TABLE IF NOT EXISTS triggerSmartContracts (
     `blockNumber` UInt64,
-    `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
@@ -1734,7 +1711,7 @@ SETTINGS index_granularity = 8192;
 #[klickhouse(rename_all = "camelCase")]
 pub struct TriggerSmartContractRow {
     pub block_number: u64,
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_timestamp: u64,
     pub transaction_hash: String,
     pub transaction_index: u64,
@@ -1757,7 +1734,7 @@ impl TriggerSmartContractRow {
     ) -> Self {
         Self {
             block_number: block.number,
-            block_hash: block.hash.clone(),
+            // block_hash: block.hash.clone(),
             block_timestamp: block.timestamp,
             transaction_hash: transaction.hash.clone(),
             transaction_index: transaction.index,
@@ -1775,7 +1752,6 @@ impl TriggerSmartContractRow {
 
 /** CREATE TABLE IF NOT EXISTS updateSettingContracts (
     `blockNumber` UInt64,
-    `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
@@ -1792,7 +1768,7 @@ SETTINGS index_granularity = 8192;
 #[klickhouse(rename_all = "camelCase")]
 pub struct UpdateSettingContractRow {
     pub block_number: u64,
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_timestamp: u64,
     pub transaction_hash: String,
     pub transaction_index: u64,
@@ -1812,7 +1788,7 @@ impl UpdateSettingContractRow {
     ) -> Self {
         Self {
             block_number: block.number,
-            block_hash: block.hash.clone(),
+            // block_hash: block.hash.clone(),
             block_timestamp: block.timestamp,
             transaction_hash: transaction.hash.clone(),
             transaction_index: transaction.index,
@@ -1827,7 +1803,6 @@ impl UpdateSettingContractRow {
 
 /** CREATE TABLE IF NOT EXISTS exchangeCreateContracts (
     `blockNumber` UInt64,
-    `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
@@ -1846,7 +1821,7 @@ SETTINGS index_granularity = 8192;
 #[klickhouse(rename_all = "camelCase")]
 pub struct ExchangeCreateContractRow {
     pub block_number: u64,
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_timestamp: u64,
     pub transaction_hash: String,
     pub transaction_index: u64,
@@ -1868,7 +1843,7 @@ impl ExchangeCreateContractRow {
     ) -> Self {
         Self {
             block_number: block.number,
-            block_hash: block.hash.clone(),
+            // block_hash: block.hash.clone(),
             block_timestamp: block.timestamp,
             transaction_hash: transaction.hash.clone(),
             transaction_index: transaction.index,
@@ -1885,7 +1860,6 @@ impl ExchangeCreateContractRow {
 
 /** CREATE TABLE IF NOT EXISTS exchangeInjectContracts (
     `blockNumber` UInt64,
-    `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
@@ -1903,7 +1877,7 @@ SETTINGS index_granularity = 8192;
 #[klickhouse(rename_all = "camelCase")]
 pub struct ExchangeInjectContractRow {
     pub block_number: u64,
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_timestamp: u64,
     pub transaction_hash: String,
     pub transaction_index: u64,
@@ -1924,7 +1898,7 @@ impl ExchangeInjectContractRow {
     ) -> Self {
         Self {
             block_number: block.number,
-            block_hash: block.hash.clone(),
+            // block_hash: block.hash.clone(),
             block_timestamp: block.timestamp,
             transaction_hash: transaction.hash.clone(),
             transaction_index: transaction.index,
@@ -1940,7 +1914,6 @@ impl ExchangeInjectContractRow {
 
 /** CREATE TABLE IF NOT EXISTS exchangeWithdrawContracts (
     `blockNumber` UInt64,
-    `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
@@ -1958,7 +1931,7 @@ SETTINGS index_granularity = 8192;
 #[klickhouse(rename_all = "camelCase")]
 pub struct ExchangeWithdrawContractRow {
     pub block_number: u64,
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_timestamp: u64,
     pub transaction_hash: String,
     pub transaction_index: u64,
@@ -1979,7 +1952,7 @@ impl ExchangeWithdrawContractRow {
     ) -> Self {
         Self {
             block_number: block.number,
-            block_hash: block.hash.clone(),
+            // block_hash: block.hash.clone(),
             block_timestamp: block.timestamp,
             transaction_hash: transaction.hash.clone(),
             transaction_index: transaction.index,
@@ -1995,7 +1968,6 @@ impl ExchangeWithdrawContractRow {
 
 /** CREATE TABLE IF NOT EXISTS exchangeTransactionContracts (
     `blockNumber` UInt64,
-    `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
@@ -2014,7 +1986,7 @@ SETTINGS index_granularity = 8192;
 #[klickhouse(rename_all = "camelCase")]
 pub struct ExchangeTransactionContractRow {
     pub block_number: u64,
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_timestamp: u64,
     pub transaction_hash: String,
     pub transaction_index: u64,
@@ -2036,7 +2008,7 @@ impl ExchangeTransactionContractRow {
     ) -> Self {
         Self {
             block_number: block.number,
-            block_hash: block.hash.clone(),
+            // block_hash: block.hash.clone(),
             block_timestamp: block.timestamp,
             transaction_hash: transaction.hash.clone(),
             transaction_index: transaction.index,
@@ -2053,7 +2025,6 @@ impl ExchangeTransactionContractRow {
 
 /** CREATE TABLE IF NOT EXISTS updateEnergyLimitContracts (
     `blockNumber` UInt64,
-    `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
@@ -2070,7 +2041,7 @@ SETTINGS index_granularity = 8192;
 #[klickhouse(rename_all = "camelCase")]
 pub struct UpdateEnergyLimitContractRow {
     pub block_number: u64,
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_timestamp: u64,
     pub transaction_hash: String,
     pub transaction_index: u64,
@@ -2090,7 +2061,7 @@ impl UpdateEnergyLimitContractRow {
     ) -> Self {
         Self {
             block_number: block.number,
-            block_hash: block.hash.clone(),
+            // block_hash: block.hash.clone(),
             block_timestamp: block.timestamp,
             transaction_hash: transaction.hash.clone(),
             transaction_index: transaction.index,
@@ -2105,7 +2076,6 @@ impl UpdateEnergyLimitContractRow {
 
 /** CREATE TABLE IF NOT EXISTS accountPermissionUpdateContracts (
     `blockNumber` UInt64,
-    `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
@@ -2146,7 +2116,7 @@ SETTINGS index_granularity = 8192, allow_nullable_key=1;
 #[klickhouse(rename_all = "camelCase")]
 pub struct AccountPermissionUpdateContractRow {
     pub block_number: u64,
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_timestamp: u64,
     pub transaction_hash: String,
     pub transaction_index: u64,
@@ -2283,7 +2253,6 @@ impl AccountPermissionUpdateContractRow {
         ) =
             call.actives.iter().fold(
                 (
-
                     Vec::new(),
                     Vec::new(),
                     Vec::new(),
@@ -2330,7 +2299,7 @@ impl AccountPermissionUpdateContractRow {
 
         Self {
             block_number: block.number,
-            block_hash: block.hash.clone(),
+            // block_hash: block.hash.clone(),
             block_timestamp: block.timestamp,
             transaction_hash: transaction.hash.clone(),
             transaction_index: transaction.index,
@@ -2366,7 +2335,6 @@ impl AccountPermissionUpdateContractRow {
 
 /** CREATE TABLE IF NOT EXISTS clearAbiContracts (
     `blockNumber` UInt64,
-    `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
@@ -2382,7 +2350,7 @@ SETTINGS index_granularity = 8192;
 #[klickhouse(rename_all = "camelCase")]
 pub struct ClearAbiContractRow {
     pub block_number: u64,
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_timestamp: u64,
     pub transaction_hash: String,
     pub transaction_index: u64,
@@ -2401,7 +2369,7 @@ impl ClearAbiContractRow {
     ) -> Self {
         Self {
             block_number: block.number,
-            block_hash: block.hash.clone(),
+            // block_hash: block.hash.clone(),
             block_timestamp: block.timestamp,
             transaction_hash: transaction.hash.clone(),
             transaction_index: transaction.index,
@@ -2414,7 +2382,6 @@ impl ClearAbiContractRow {
 
 /** CREATE TABLE IF NOT EXISTS updateBrokerageContracts (
     `blockNumber` UInt64,
-    `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
@@ -2430,7 +2397,7 @@ SETTINGS index_granularity = 8192;
 #[klickhouse(rename_all = "camelCase")]
 pub struct UpdateBrokerageContractRow {
     pub block_number: u64,
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_timestamp: u64,
     pub transaction_hash: String,
     pub transaction_index: u64,
@@ -2449,7 +2416,7 @@ impl UpdateBrokerageContractRow {
     ) -> Self {
         Self {
             block_number: block.number,
-            block_hash: block.hash.clone(),
+            // block_hash: block.hash.clone(),
             block_timestamp: block.timestamp,
             transaction_hash: transaction.hash.clone(),
             transaction_index: transaction.index,
@@ -2462,7 +2429,6 @@ impl UpdateBrokerageContractRow {
 
 /** CREATE TABLE IF NOT EXISTS shieldedTransferContracts (
     `blockNumber` UInt64,
-    `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
@@ -2496,7 +2462,7 @@ SETTINGS index_granularity = 8192;
 #[klickhouse(rename_all = "camelCase")]
 pub struct ShieldedTransferContractRow {
     pub block_number: u64,
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_timestamp: u64,
     pub transaction_hash: String,
     pub transaction_index: u64,
@@ -2631,7 +2597,7 @@ impl ShieldedTransferContractRow {
 
         Self {
             block_number: block.number,
-            block_hash: block.hash.clone(),
+            // block_hash: block.hash.clone(),
             block_timestamp: block.timestamp,
             transaction_hash: transaction.hash.clone(),
             transaction_index: transaction.index,
@@ -2661,7 +2627,6 @@ impl ShieldedTransferContractRow {
 
 /** CREATE TABLE IF NOT EXISTS marketSellAssetContracts (
     `blockNumber` UInt64,
-    `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
@@ -2680,7 +2645,7 @@ SETTINGS index_granularity = 8192;
 #[klickhouse(rename_all = "camelCase")]
 pub struct MarketSellAssetContractRow {
     pub block_number: u64,
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_timestamp: u64,
     pub transaction_hash: String,
     pub transaction_index: u64,
@@ -2702,7 +2667,7 @@ impl MarketSellAssetContractRow {
     ) -> Self {
         Self {
             block_number: block.number,
-            block_hash: block.hash.clone(),
+            // block_hash: block.hash.clone(),
             block_timestamp: block.timestamp,
             transaction_hash: transaction.hash.clone(),
             transaction_index: transaction.index,
@@ -2718,7 +2683,6 @@ impl MarketSellAssetContractRow {
 
 /** CREATE TABLE IF NOT EXISTS marketCancelOrderContracts (
     `blockNumber` UInt64,
-    `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
@@ -2734,7 +2698,7 @@ SETTINGS index_granularity = 8192;
 #[klickhouse(rename_all = "camelCase")]
 pub struct MarketCancelOrderContractRow {
     pub block_number: u64,
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_timestamp: u64,
     pub transaction_hash: String,
     pub transaction_index: u64,
@@ -2753,7 +2717,7 @@ impl MarketCancelOrderContractRow {
     ) -> Self {
         Self {
             block_number: block.number,
-            block_hash: block.hash.clone(),
+            // block_hash: block.hash.clone(),
             block_timestamp: block.timestamp,
             transaction_hash: transaction.hash.clone(),
             transaction_index: transaction.index,
@@ -2767,7 +2731,6 @@ impl MarketCancelOrderContractRow {
 
 /** CREATE TABLE IF NOT EXISTS freezeBalanceV2Contracts (
     `blockNumber` UInt64,
-    `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
@@ -2784,7 +2747,7 @@ SETTINGS index_granularity = 8192;
 #[klickhouse(rename_all = "camelCase")]
 pub struct FreezeBalanceV2ContractRow {
     pub block_number: u64,
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_timestamp: u64,
     pub transaction_hash: String,
     pub transaction_index: u64,
@@ -2804,7 +2767,7 @@ impl FreezeBalanceV2ContractRow {
     ) -> Self {
         Self {
             block_number: block.number,
-            block_hash: block.hash.clone(),
+            // block_hash: block.hash.clone(),
             block_timestamp: block.timestamp,
             transaction_hash: transaction.hash.clone(),
             transaction_index: transaction.index,
@@ -2820,7 +2783,6 @@ impl FreezeBalanceV2ContractRow {
 /** CREATE TABLE IF NOT EXISTS unfreezeBalanceV2Contracts
 (
     `blockNumber` UInt64,
-    `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
@@ -2837,7 +2799,7 @@ SETTINGS index_granularity = 8192;
 #[klickhouse(rename_all = "camelCase")]
 pub struct UnfreezeBalanceV2ContractRow {
     pub block_number: u64,
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_timestamp: u64,
     pub transaction_hash: String,
     pub transaction_index: u64,
@@ -2857,7 +2819,7 @@ impl UnfreezeBalanceV2ContractRow {
     ) -> Self {
         Self {
             block_number: block.number,
-            block_hash: block.hash.clone(),
+            // block_hash: block.hash.clone(),
             block_timestamp: block.timestamp,
             transaction_hash: transaction.hash.clone(),
             transaction_index: transaction.index,
@@ -2873,7 +2835,6 @@ impl UnfreezeBalanceV2ContractRow {
 /** CREATE TABLE IF NOT EXISTS withdrawExpireUnfreezeContracts
 (
     `blockNumber` UInt64,
-    `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
@@ -2888,7 +2849,7 @@ SETTINGS index_granularity = 8192;
 #[klickhouse(rename_all = "camelCase")]
 pub struct WithdrawExpireUnfreezeContractRow {
     pub block_number: u64,
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_timestamp: u64,
     pub transaction_hash: String,
     pub transaction_index: u64,
@@ -2906,7 +2867,7 @@ impl WithdrawExpireUnfreezeContractRow {
     ) -> Self {
         Self {
             block_number: block.number,
-            block_hash: block.hash.clone(),
+            // block_hash: block.hash.clone(),
             block_timestamp: block.timestamp,
             transaction_hash: transaction.hash.clone(),
             transaction_index: transaction.index,
@@ -2919,7 +2880,6 @@ impl WithdrawExpireUnfreezeContractRow {
 /** CREATE TABLE IF NOT EXISTS delegateResourceContracts
 (
     `blockNumber` UInt64,
-    `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
@@ -2939,7 +2899,7 @@ SETTINGS index_granularity = 8192;
 #[klickhouse(rename_all = "camelCase")]
 pub struct DelegateResourceContractRow {
     pub block_number: u64,
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_timestamp: u64,
     pub transaction_hash: String,
     pub transaction_index: u64,
@@ -2962,7 +2922,7 @@ impl DelegateResourceContractRow {
     ) -> Self {
         Self {
             block_number: block.number,
-            block_hash: block.hash.clone(),
+            // block_hash: block.hash.clone(),
             block_timestamp: block.timestamp,
             transaction_hash: transaction.hash.clone(),
             transaction_index: transaction.index,
@@ -2981,7 +2941,6 @@ impl DelegateResourceContractRow {
 /** CREATE TABLE IF NOT EXISTS undelegateResourceContracts
 (
     `blockNumber` UInt64,
-    `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
@@ -2999,7 +2958,7 @@ SETTINGS index_granularity = 8192;
 #[klickhouse(rename_all = "camelCase")]
 pub struct UndelegateResourceContractRow {
     pub block_number: u64,
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_timestamp: u64,
     pub transaction_hash: String,
     pub transaction_index: u64,
@@ -3020,7 +2979,7 @@ impl UndelegateResourceContractRow {
     ) -> Self {
         Self {
             block_number: block.number,
-            block_hash: block.hash.clone(),
+            // block_hash: block.hash.clone(),
             block_timestamp: block.timestamp,
             transaction_hash: transaction.hash.clone(),
             transaction_index: transaction.index,
@@ -3037,7 +2996,6 @@ impl UndelegateResourceContractRow {
 /** CREATE TABLE IF NOT EXISTS cancelAllUnfreezeV2Contracts
 (
     `blockNumber` UInt64,
-    `blockHash` FixedString(64),
     `blockTimestamp` UInt64,
     `transactionIndex` UInt64,
     `transactionHash` FixedString(64),
@@ -3052,7 +3010,7 @@ SETTINGS index_granularity = 8192;
 #[klickhouse(rename_all = "camelCase")]
 pub struct CancelAllUnfreezeV2ContractRow {
     pub block_number: u64,
-    pub block_hash: String,
+    // pub block_hash: String,
     pub block_timestamp: u64,
     pub transaction_hash: String,
     pub transaction_index: u64,
@@ -3070,7 +3028,7 @@ impl CancelAllUnfreezeV2ContractRow {
     ) -> Self {
         Self {
             block_number: block.number,
-            block_hash: block.hash.clone(),
+            // block_hash: block.hash.clone(),
             block_timestamp: block.timestamp,
             transaction_hash: transaction.hash.clone(),
             transaction_index: transaction.index,
