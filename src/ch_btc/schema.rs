@@ -10,7 +10,6 @@ CREATE TABLE IF NOT EXISTS blocks (
     `weight` UInt64,
     `prevBlockHash` FixedString(64),
     `version` Int32,
-    `merkleRoot` FixedString(64),
     `time` UInt32,
     `bits` UInt32,
     `nonce` UInt32,
