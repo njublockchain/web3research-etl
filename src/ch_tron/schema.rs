@@ -310,7 +310,7 @@ impl TransactionRow {
             contract_name: contract.map(|contract| hex::encode(contract.contract_name.clone())),
             contract_permission_id: contract.map(|contract| contract.permission_id),
             scripts: hex::encode(tx_raw_data.scripts),
-            timestamp: tx_raw_data.timestamp.try_into().unwrap(),
+            timestamp: tx_raw_data.timestamp as u64, // may neg in 33358XXX
             fee_limit: tx_raw_data.fee_limit,
             // signature: tx
             //     .signature
