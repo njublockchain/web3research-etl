@@ -10,16 +10,12 @@
 
 | Chain | `init` | `sync` | `check` |
 | --- | --- | --- | --- |
-| Ethereum | ✅ | ✅ | ✅ |  |
-| Bitcoin | ✅ | ❎ | ❎ |  |
-| Tron | ✅ | ❎ | ❎ |
-| Arbitrum One | ✅ | ❎ | ❎ |
-| Arbitrum Nova | ✅ | ❎ | ❎ |
-| Polygon | ✅ | ❎ | ❎ |
-| BNB Smart Chain | 🚧 | 🚧 | 🚧 |
+| Ethereum(& FORKs/L2s) | ✅ | ✅ | ✅ |
+| Bitcoin | ✅ | ✅ | ✅ |
+| Tron | ✅ | ✅ | ✅ |
 | Solana | 🚧 | 🚧 | 🚧 |
 | Near | 🚧 | 🚧 | 🚧 |
-| The Open Network | 🚧 | 🚧 | 🚧 |
+| The Open Network(TON) | 🚧 | 🚧 | 🚧 |
 
 ## Install
 
