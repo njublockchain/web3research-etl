@@ -1,8 +1,10 @@
-use std::error::Error;
+use std::{collections::HashMap, error::Error};
 
 use bitcoin::{hashes::Hash, Address};
 use bitcoincore_rpc::RpcApi;
 use documented::Documented;
+use futures::StreamExt;
+use klickhouse::Row;
 use log::{info, warn};
 use url::Url;
 
@@ -87,24 +89,78 @@ pub(crate) async fn init(
 
         block_row_list.push(block_row);
 
+        // batch fetch vout address from clickhosue
+        let mut prev_vout_addresses: HashMap<(String, u32), Option<String>> = HashMap::new();
+        for tx in block.txdata.iter() {
+            for vin in tx.input.iter() {
+                if vin.previous_output.txid != bitcoin::Txid::all_zeros() {
+                    prev_vout_addresses.insert(
+                        (
+                            vin.previous_output.txid.to_string(),
+                            vin.previous_output.vout,
+                        ),
+                        None,
+                    );
+                }
+            }
+        }
+
+        #[derive(Row, Clone, Debug, Default)]
+        #[klickhouse(rename_all = "camelCase")]
+        struct OutputAddressResult {
+            txid: String,
+            index: u32,
+            address: Option<String>,
+        }
+
+        // Split the query into chunks to avoid max_query_size limit
+        if !prev_vout_addresses.is_empty() {
+            const CHUNK_SIZE: usize = 500; // FIXME
+            let keys: Vec<_> = prev_vout_addresses.keys().cloned().collect();
+
+            for chunk in keys.chunks(CHUNK_SIZE) {
+                if chunk.is_empty() {
+                    continue;
+                }
+
+                let conditions = chunk
+                    .iter()
+                    .map(|k| format!("(txid = '{}' AND index = {})", k.0, k.1))
+                    .collect::<Vec<_>>()
+                    .join(" OR ");
+                let query = format!(
+                    "SELECT txid, index, address FROM outputs WHERE {}",
+                    conditions
+                );
+
+                let mut result = client.query::<OutputAddressResult>(query).await.expect(&format!("Failed to query some of the previous outputs: {:?}", keys));
+                while let Some(row) = result.next().await {
+                    let row = row?;
+                    prev_vout_addresses.insert((row.txid, row.index), row.address);
+                }
+            }
+        }
+
+        warn!(
+            "Fetched {} previous output addresses for block {}",
+            prev_vout_addresses.len(),
+            height
+        );
+
         for (tx_index, tx) in block.txdata.iter().enumerate() {
             for (index, vin) in tx.input.iter().enumerate() {
-                let address = if vin.previous_output.txid == bitcoin::Txid::all_zeros()
-                {
+                let address = if vin.previous_output.txid == bitcoin::Txid::all_zeros() {
                     // Handle coinbase transaction
                     Some("Coinbase".to_string())
                 } else {
-                    Address::from_script(
-                        &provider
-                            .get_raw_transaction(&vin.previous_output.txid, None)
-                            .unwrap()
-                            .tx_out(vin.previous_output.vout.try_into().unwrap())
-                            .unwrap()
-                            .script_pubkey,
-                        bitcoin::Network::Bitcoin,
-                    )
-                    .ok()
-                    .map(|s| s.to_string())
+                    // Fetch the address from the previous output if available
+                    prev_vout_addresses
+                        .get(&(
+                            vin.previous_output.txid.to_string(),
+                            vin.previous_output.vout,
+                        ))
+                        .cloned()
+                        .unwrap() // shouldnt be none when fetching by key
                 };
 
                 let input_row = InputRow::from_bitcoin_rpc(
