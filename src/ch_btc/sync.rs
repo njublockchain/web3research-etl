@@ -1,13 +1,17 @@
-use std::error::Error;
+use std::{
+    collections::{HashMap, HashSet},
+    error::Error,
+};
 
 use bitcoin::{hashes::Hash, Address};
 use bitcoincore_rpc::RpcApi;
+use futures::StreamExt;
 use klickhouse::{Client, Row};
 use log::{info, warn};
 use url::Url;
 
 use crate::{
-    ch_btc::schema::{BlockRow, InputRow, OutputRow},
+    ch_btc::schema::{get_address, BlockRow, InputRow, OutputRow},
     ProviderType,
 };
 
@@ -32,10 +36,76 @@ pub async fn insert_block(
 
     block_row_list.push(block_row);
 
+    let mut prev_vout_addresses: HashMap<(String, u32), Option<String>> = HashMap::new();
+
+    let mut missing_prev_vouts: HashSet<(String, u32)> = HashSet::new();
+
+    // batch fetch vout address from clickhosue
+    for tx in block.txdata.iter() {
+        for vin in tx.input.iter() {
+            if vin.previous_output.txid != bitcoin::Txid::all_zeros()
+                && !prev_vout_addresses.contains_key(&(
+                    vin.previous_output.txid.to_string(),
+                    vin.previous_output.vout,
+                ))
+            {
+                missing_prev_vouts.insert((
+                    vin.previous_output.txid.to_string(),
+                    vin.previous_output.vout,
+                ));
+            }
+        }
+    }
+
+    #[derive(Row, Clone, Debug, Default)]
+    #[klickhouse(rename_all = "camelCase")]
+    struct OutputAddressResult {
+        txid: String,
+        index: u32,
+        address: Option<String>,
+    }
+
+    // Split the query into chunks to avoid max_query_size limit
+    if !missing_prev_vouts.is_empty() {
+        const CHUNK_SIZE: usize = 1000; // FIXME
+
+        for chunk in missing_prev_vouts
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>()
+            .chunks(CHUNK_SIZE)
+        {
+            if chunk.is_empty() {
+                continue;
+            }
+
+            let conditions = chunk
+                .iter()
+                .map(|k| format!("('{}', {})", k.0, k.1))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let query = format!(
+                "SELECT txid, index, address FROM outputs WHERE (txid, index) IN ({})",
+                conditions
+            );
+
+            let mut result = client
+                .query::<OutputAddressResult>(query)
+                .await
+                .expect(&format!(
+                    "Failed to query some of the previous outputs: {:?}",
+                    chunk
+                ));
+            while let Some(row) = result.next().await {
+                let row = row?;
+                prev_vout_addresses.insert((row.txid, row.index), row.address);
+            }
+        }
+    }
+
     for (tx_index, tx) in block.txdata.iter().enumerate() {
         for (index, vin) in tx.input.iter().enumerate() {
-            let address = if vin.previous_output.txid == bitcoin::Txid::all_zeros()
-            {
+            let address = if vin.previous_output.txid == bitcoin::Txid::all_zeros() {
                 // Handle coinbase transaction
                 Some("Coinbase".to_string())
             } else {
@@ -65,6 +135,20 @@ pub async fn insert_block(
         }
 
         for (index, vout) in tx.output.iter().enumerate() {
+            let address = get_address(&vout.script_pubkey);
+            if address.is_none() {
+                warn!(
+                    "Cannot decode script pubkey: {} on tx {} index {}",
+                    vout.script_pubkey.to_asm_string(),
+                    tx.compute_txid(),
+                    index
+                );
+            }
+            prev_vout_addresses.insert(
+                (tx.compute_txid().to_string(), index.try_into().unwrap()),
+                address.clone(),
+            );
+
             let output_row = OutputRow::from_bitcoin_rpc(
                 height,
                 &block,
@@ -72,6 +156,7 @@ pub async fn insert_block(
                 tx_index.try_into().unwrap(),
                 index.try_into().unwrap(),
                 vout,
+                address,
             );
             output_row_list.push(output_row);
         }

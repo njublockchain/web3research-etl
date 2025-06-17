@@ -1,4 +1,4 @@
-use bitcoin::{params::MAINNET, secp256k1::PublicKey, Address};
+use bitcoin::{params::MAINNET, secp256k1::PublicKey, Address, ScriptBuf};
 use documented::Documented;
 use klickhouse::Row;
 use log::warn;
@@ -218,43 +218,8 @@ impl OutputRow {
         tx_index: u32,
         index: u32,
         vout: &bitcoin::blockdata::transaction::TxOut,
+        address: Option<String>,
     ) -> Self {
-        let address = if vout.script_pubkey.is_empty() {
-            Some("Blackhole".to_string())
-        } else if vout.script_pubkey.is_multisig() {
-            Some("MultiSig".to_string())
-        } else if vout.script_pubkey.is_op_return() {
-            Some("OP_RETURN".to_string())
-        } else if vout.script_pubkey.is_p2pk() {
-            let pubkey = vout.script_pubkey.p2pk_public_key().unwrap().to_string();
-
-            Some(format!("PublicKey:{}", pubkey))
-        } else if vout.script_pubkey.is_p2pkh()
-            || vout.script_pubkey.is_p2wpkh()
-            || vout.script_pubkey.is_p2sh()
-            || vout.script_pubkey.is_p2wpkh()
-            || vout.script_pubkey.is_p2tr()
-        {
-            Some(
-                Address::from_script(&vout.script_pubkey, &MAINNET)
-                    .unwrap()
-                    .to_string(),
-            )
-        } else if vout.script_pubkey.is_push_only() {
-            Some("PushOnly".to_string())
-        } else if vout.script_pubkey.is_witness_program() {
-            warn!("Found a non-address witness program: {}", vout.script_pubkey.to_asm_string());
-            Some("WitnessProgram".to_string())
-        } else {
-            warn!(
-                "Cannot decode script pubkey: {} on tx {} index {}",
-                vout.script_pubkey.to_asm_string(),
-                tx.compute_txid(),
-                index
-            );
-            None
-        };
-
         Self {
             txid: tx.compute_txid().to_string(),
             tx_index: tx_index,
@@ -271,7 +236,45 @@ impl OutputRow {
             value: vout.value.to_sat(),
             script_pubkey: vout.script_pubkey.to_hex_string(),
             // Attempt to derive an address from the script_pubkey.
-            address,
+            address: address.clone(),
         }
     }
+}
+
+pub fn get_address(script_pubkey: &ScriptBuf) -> Option<String> {
+    let address = if script_pubkey.is_empty() {
+        Some("Blackhole".to_string())
+    } else if script_pubkey.is_multisig() {
+        Some("MultiSig".to_string())
+    } else if script_pubkey.is_op_return() {
+        Some("OpReturn".to_string())
+    } else if script_pubkey.is_p2pk() {
+        let pubkey = script_pubkey.p2pk_public_key()
+            .map(|pk| pk.to_string())
+            .unwrap_or_else(|| "InvalidPublicKey".to_string());
+
+        Some(pubkey)
+    } else if script_pubkey.is_p2pkh()
+        || script_pubkey.is_p2wpkh()
+        || script_pubkey.is_p2sh()
+        || script_pubkey.is_p2wpkh()
+        || script_pubkey.is_p2tr()
+    {
+        Some(
+            Address::from_script(&script_pubkey, &MAINNET)
+                .unwrap()
+                .to_string(),
+        )
+    } else if script_pubkey.is_push_only() {
+        Some("PushOnly".to_string())
+    } else if script_pubkey.is_witness_program() {
+        warn!(
+            "Found a non-address witness program: {}",
+            script_pubkey.to_asm_string()
+        );
+        Some("WitnessProgram".to_string())
+    } else {
+        None
+    };
+    address
 }
