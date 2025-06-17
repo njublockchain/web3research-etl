@@ -1,6 +1,8 @@
-use bitcoin::Address;
+use bitcoin::{params::MAINNET, secp256k1::PublicKey, Address};
 use documented::Documented;
 use klickhouse::Row;
+use log::warn;
+use solana_sdk::pubkey;
 
 /**
 CREATE TABLE IF NOT EXISTS blocks (
@@ -217,6 +219,42 @@ impl OutputRow {
         index: u32,
         vout: &bitcoin::blockdata::transaction::TxOut,
     ) -> Self {
+        let address = if vout.script_pubkey.is_empty() {
+            Some("Blackhole".to_string())
+        } else if vout.script_pubkey.is_multisig() {
+            Some("MultiSig".to_string())
+        } else if vout.script_pubkey.is_op_return() {
+            Some("OP_RETURN".to_string())
+        } else if vout.script_pubkey.is_p2pk() {
+            let pubkey = vout.script_pubkey.p2pk_public_key().unwrap().to_string();
+
+            Some(format!("PublicKey:{}", pubkey))
+        } else if vout.script_pubkey.is_p2pkh()
+            || vout.script_pubkey.is_p2wpkh()
+            || vout.script_pubkey.is_p2sh()
+            || vout.script_pubkey.is_p2wpkh()
+            || vout.script_pubkey.is_p2tr()
+        {
+            Some(
+                Address::from_script(&vout.script_pubkey, &MAINNET)
+                    .unwrap()
+                    .to_string(),
+            )
+        } else if vout.script_pubkey.is_push_only() {
+            Some("PushOnly".to_string())
+        } else if vout.script_pubkey.is_witness_program() {
+            warn!("Found a non-address witness program: {}", vout.script_pubkey.to_asm_string());
+            Some("WitnessProgram".to_string())
+        } else {
+            warn!(
+                "Cannot decode script pubkey: {} on tx {} index {}",
+                vout.script_pubkey.to_asm_string(),
+                tx.compute_txid(),
+                index
+            );
+            None
+        };
+
         Self {
             txid: tx.compute_txid().to_string(),
             tx_index: tx_index,
@@ -233,9 +271,7 @@ impl OutputRow {
             value: vout.value.to_sat(),
             script_pubkey: vout.script_pubkey.to_hex_string(),
             // Attempt to derive an address from the script_pubkey.
-            address: Address::from_script(&vout.script_pubkey, bitcoin::Network::Bitcoin)
-                .ok()
-                .map(|s| s.to_string()),
+            address,
         }
     }
 }
