@@ -115,7 +115,7 @@ pub(crate) async fn init(
 
         // Split the query into chunks to avoid max_query_size limit
         if !prev_vout_addresses.is_empty() {
-            const CHUNK_SIZE: usize = 500; // FIXME
+            const CHUNK_SIZE: usize = 1000; // FIXME
             let keys: Vec<_> = prev_vout_addresses.keys().cloned().collect();
 
             for chunk in keys.chunks(CHUNK_SIZE) {
@@ -125,11 +125,11 @@ pub(crate) async fn init(
 
                 let conditions = chunk
                     .iter()
-                    .map(|k| format!("(txid = '{}' AND index = {})", k.0, k.1))
+                    .map(|k| format!("('{}', {})", k.0, k.1))
                     .collect::<Vec<_>>()
-                    .join(" OR ");
+                    .join(", ");
                 let query = format!(
-                    "SELECT txid, index, address FROM outputs WHERE {}",
+                    "SELECT txid, index, address FROM outputs WHERE (txid, index) IN ({})",
                     conditions
                 );
 
@@ -138,6 +138,13 @@ pub(crate) async fn init(
                     let row = row?;
                     prev_vout_addresses.insert((row.txid, row.index), row.address);
                 }
+            }
+        }
+
+        // warn if address is still None
+        for (key, value) in prev_vout_addresses.iter() {
+            if value.is_none() {
+                warn!("Cannot find address for output {:?}", key);
             }
         }
 
