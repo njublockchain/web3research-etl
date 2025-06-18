@@ -317,6 +317,7 @@ pub fn get_address(script_pubkey: &ScriptBuf) -> Option<String> {
         let mut has_checksig = false;
         let mut has_hash_ops = false;
         let mut has_equalverify = false;
+        let mut has_checklocktime = false;
 
         for instruction in instructions {
             if let Ok(instruction) = instruction {
@@ -339,6 +340,8 @@ pub fn get_address(script_pubkey: &ScriptBuf) -> Option<String> {
                             || op == bitcoin::opcodes::all::OP_EQUAL
                         {
                             has_equalverify = true;
+                        } else if op == bitcoin::opcodes::all::OP_CLTV {
+                            has_checklocktime = true;
                         }
                     }
                     bitcoin::script::Instruction::PushBytes(_push_bytes) => {}
@@ -352,6 +355,8 @@ pub fn get_address(script_pubkey: &ScriptBuf) -> Option<String> {
             Some("NonstandardSig".to_string())
         } else if has_hash_ops && has_equalverify {
             Some("HashLock".to_string())
+        } else if has_checklocktime {
+            Some("TimeLock".to_string())
         } else {
             warn!(
                 "Cannot decode script pubkey: {}",
