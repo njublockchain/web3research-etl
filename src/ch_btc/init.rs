@@ -174,7 +174,8 @@ pub(crate) async fn init(
                         .cloned()
                         .unwrap(); // shouldnt be none when fetching by key
                     if address.is_none() {
-                        panic!(
+                        // Some vout is indeed not a valid address, e.g. OP_DUP OP_DUP OP_DUP
+                        warn!(
                             "vin address is None: tx {} index {}",
                             tx.compute_txid(),
                             index
