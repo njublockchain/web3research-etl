@@ -1,7 +1,7 @@
 use bitcoin::{params::MAINNET, Address, ScriptBuf};
 use documented::Documented;
 use klickhouse::Row;
-use log::warn;
+use log::{info, warn};
 
 /**
 CREATE TABLE IF NOT EXISTS blocks (
@@ -358,7 +358,7 @@ pub fn get_address(script_pubkey: &ScriptBuf) -> Option<String> {
         } else if has_checklocktime {
             Some("TimeLock".to_string())
         } else {
-            warn!(
+            info!(
                 "Cannot decode script pubkey: {}",
                 script_pubkey.to_asm_string()
             );
