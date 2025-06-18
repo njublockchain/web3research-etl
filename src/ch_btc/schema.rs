@@ -1,8 +1,7 @@
-use bitcoin::{params::MAINNET, secp256k1::PublicKey, Address, ScriptBuf};
+use bitcoin::{params::MAINNET, Address, ScriptBuf};
 use documented::Documented;
 use klickhouse::Row;
 use log::warn;
-use solana_sdk::pubkey;
 
 /**
 CREATE TABLE IF NOT EXISTS blocks (
@@ -245,11 +244,49 @@ pub fn get_address(script_pubkey: &ScriptBuf) -> Option<String> {
     let address = if script_pubkey.is_empty() {
         Some("Blackhole".to_string())
     } else if script_pubkey.is_multisig() {
-        Some("MultiSig".to_string())
+        let instructions = script_pubkey.instructions();
+        let mut multisig_required_signatures = 0;
+        let mut multisig_total_signatures = 0;
+        let mut pubkey_count = 0;
+
+        for instruction in instructions {
+            if let Ok(instruction) = instruction {
+                match instruction {
+                    bitcoin::blockdata::script::Instruction::Op(op) => {
+                        if op.to_u8() >= bitcoin::opcodes::all::OP_PUSHNUM_1.to_u8()
+                            && op.to_u8() <= bitcoin::opcodes::all::OP_PUSHNUM_16.to_u8()
+                        {
+                            let num = op.to_u8() - bitcoin::opcodes::all::OP_PUSHNUM_1.to_u8() + 1;
+                            if multisig_required_signatures == 0 {
+                                multisig_required_signatures = num;
+                            } else {
+                                multisig_total_signatures = num;
+                            }
+                        } else if op == bitcoin::opcodes::all::OP_CHECKMULTISIG {
+                            if multisig_total_signatures == 0 {
+                                multisig_total_signatures = pubkey_count;
+                            }
+                            break;
+                        }
+                    }
+                    bitcoin::blockdata::script::Instruction::PushBytes(bytes) => {
+                        if bytes.len() == 33 || bytes.len() == 65 {
+                            pubkey_count += 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        Some(format!(
+            "MultiSig:({}/{})",
+            multisig_required_signatures, multisig_total_signatures
+        ))
     } else if script_pubkey.is_op_return() {
         Some("OpReturn".to_string())
     } else if script_pubkey.is_p2pk() {
-        let pubkey = script_pubkey.p2pk_public_key()
+        let pubkey = script_pubkey
+            .p2pk_public_key()
             .map(|pk| pk.to_string())
             .unwrap_or_else(|| "InvalidPublicKey".to_string());
 
@@ -274,7 +311,54 @@ pub fn get_address(script_pubkey: &ScriptBuf) -> Option<String> {
         );
         Some("WitnessProgram".to_string())
     } else {
-        None
+        let instructions = script_pubkey.instructions();
+
+        let mut has_checkmultisig = false;
+        let mut has_checksig = false;
+        let mut has_hash_ops = false;
+        let mut has_equalverify = false;
+
+        for instruction in instructions {
+            if let Ok(instruction) = instruction {
+                match instruction {
+                    bitcoin::script::Instruction::Op(op) => {
+                        if op == bitcoin::opcodes::all::OP_CHECKSIG {
+                            has_checksig = true;
+                            break;
+                        } else if op == bitcoin::opcodes::all::OP_CHECKMULTISIG {
+                            has_checkmultisig = true;
+                            break;
+                        } else if op == bitcoin::opcodes::all::OP_HASH160
+                            || op == bitcoin::opcodes::all::OP_HASH256
+                            || op == bitcoin::opcodes::all::OP_RIPEMD160
+                            || op == bitcoin::opcodes::all::OP_SHA1
+                            || op == bitcoin::opcodes::all::OP_SHA256
+                        {
+                            has_hash_ops = true;
+                        } else if op == bitcoin::opcodes::all::OP_EQUALVERIFY
+                            || op == bitcoin::opcodes::all::OP_EQUAL
+                        {
+                            has_equalverify = true;
+                        }
+                    }
+                    bitcoin::script::Instruction::PushBytes(_push_bytes) => {}
+                }
+            }
+        }
+
+        if has_checkmultisig {
+            Some("NonstandardMultiSig".to_string())
+        } else if has_checksig {
+            Some("NonstandardSig".to_string())
+        } else if has_hash_ops && has_equalverify {
+            Some("HashLock".to_string())
+        } else {
+            warn!(
+                "Cannot decode script pubkey: {}",
+                script_pubkey.to_asm_string()
+            );
+            None
+        }
     };
     address
 }
