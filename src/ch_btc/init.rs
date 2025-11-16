@@ -172,7 +172,7 @@ pub(crate) async fn init(
                             vin.previous_output.vout,
                         ))
                         .cloned()
-                        .unwrap(); // shouldnt be none when fetching by key
+                        .expect(&format!("lack address for {}.{}", vin.previous_output.txid.to_string(), vin.previous_output.vout)); // shouldnt be none when fetching by key
                     if address.is_none() {
                         // Some vout is indeed not a valid address, e.g. OP_DUP OP_DUP OP_DUP
                         warn!(

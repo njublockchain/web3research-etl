@@ -358,7 +358,7 @@ pub fn get_address(script_pubkey: &ScriptBuf) -> Option<String> {
         } else if has_checklocktime {
             Some("TimeLock".to_string())
         } else {
-            info!(
+            warn!(
                 "Cannot decode script pubkey: {}",
                 script_pubkey.to_asm_string()
             );
